@@ -1,0 +1,2759 @@
+--// ANTONIO HUB v3.1  (Start | ESP | Anzahl | Teleport | Visuals | Notifier | Spieler | Performance | Tools | Autofarm | Einstellungen)
+local Players=game:GetService("Players")
+local RS=game:GetService("RunService")
+local UIS=game:GetService("UserInputService")
+local TS=game:GetService("TweenService")
+local HttpService=game:GetService("HttpService")
+local TeleportService=game:GetService("TeleportService")
+local VU=game:GetService("VirtualUser")
+local Stats=game:GetService("Stats")
+local Lighting=game:GetService("Lighting")
+local P=Players.LocalPlayer
+
+local env=(getgenv and getgenv()) or _G
+if env.__ANTONIO_UNLOAD then pcall(env.__ANTONIO_UNLOAD) end
+if env.__GALAXY_UNLOAD then pcall(env.__GALAXY_UNLOAD) end
+
+local alive=true
+local conns={}
+local restorers={}
+local function conn(c) conns[#conns+1]=c return c end
+
+--// =========================================================
+--// EINSTELLUNGEN (werden automatisch gespeichert, wenn der Executor Dateien kann)
+--// =========================================================
+local FILE="AntonioHub_v2.json"
+local canFile=(type(writefile)=="function" and type(readfile)=="function" and type(isfile)=="function")
+local S={
+ lang="de",theme=1,accent=1,custom=false,accR=124,accG=92,accB=255,
+ font=1,espFont=1,uiScale=100,anim=true,borderAnim=true,menuKey="RightControl",
+ espOn=true,hl=true,fill=0.2,pulse=true,showName=true,showLuck=true,showDist=true,showSize=true,
+ textSize=16,maxDist=0,ghost=true,sweepR=3000,tracers=true,tracerOrigin=1,tracerW=2,
+ notifyMin=15,notifySound=false,toastTime=4,eggs={},
+ -- neu in v3.1
+ tpHeight=5,scanInt=10,shortNames=false,hlOutline=true,showTips=true,countOnlyFound=true,countSort=1,
+}
+do
+ if canFile then
+  pcall(function()
+   if isfile(FILE) then
+    local d=HttpService:JSONDecode(readfile(FILE))
+    for k,v in pairs(d) do
+     if S[k]~=nil and type(v)==type(S[k]) then S[k]=v end
+    end
+   end
+  end)
+ end
+end
+local noSave,saveQueued=false,false
+local function save()
+ if not canFile or saveQueued or noSave then return end
+ saveQueued=true
+ task.delay(1,function()
+  saveQueued=false
+  if noSave then return end
+  pcall(function() writefile(FILE,HttpService:JSONEncode(S)) end)
+ end)
+end
+
+--// =========================================================
+--// EIER (nach Luck sortiert) - NEUES EI: Zeile kopieren
+--// =========================================================
+local TYPES={
+ {name="White Egg",       text="white egg",       luck="1",    color=Color3.fromRGB(235,235,255)},
+ {name="Green Egg",       text="green egg",       luck="5",    color=Color3.fromRGB(0,255,60)},
+ {name="Blue Egg",        text="blue egg",        luck="30",   color=Color3.fromRGB(30,60,255)},
+ {name="Stone Egg",       text="stone egg",       luck="50",   color=Color3.fromRGB(150,150,160)},
+ {name="Earth Egg",       text="earth egg",       luck="100",  color=Color3.fromRGB(160,110,60)},
+ {name="Celestial Egg",   text="celestial egg",   luck="250",  color=Color3.fromRGB(0,230,190)},
+ {name="Cactus Egg",      text="cactus egg",      luck="350",  color=Color3.fromRGB(60,200,90)},
+ {name="Rune Egg",        text="rune egg",        luck="600",  color=Color3.fromRGB(80,220,230)},
+ {name="Plantium Egg",    text="plantium egg",    luck="750",  color=Color3.fromRGB(205,110,235)},
+ {name="Glitch Egg",      text="glitch egg",      luck="1K",   color=Color3.fromRGB(255,0,200)},
+ {name="Venom Egg",       text="venom egg",       luck="2.5K", color=Color3.fromRGB(190,255,0)},
+ {name="Forest Egg",      text="forest egg",      luck="5K",   color=Color3.fromRGB(90,200,60)},
+ {name="Thorn Egg",       text="thorn egg",       luck="8.5K", color=Color3.fromRGB(30,150,100)},
+ {name="Jungle Egg",      text="jungle egg",      luck="15K",  color=Color3.fromRGB(190,140,30)},
+ {name="Dragon Egg",      text="dragon egg",      luck="20K",  color=Color3.fromRGB(255,110,0)},
+ {name="Day & Night Egg", text="day & night egg", luck="35K",  color=Color3.fromRGB(255,200,40)},
+ {name="Frost Egg",       text="frost egg",       luck="100K", color=Color3.fromRGB(110,150,255)},
+ {name="Cherry Egg",      text="cherry egg",      luck="150K", color=Color3.fromRGB(255,150,200)},
+ {name="Void Egg",        text="void egg",        luck="180K", color=Color3.fromRGB(120,40,200)},
+ {name="Circuit Egg",     text="circuit egg",     luck="240K", color=Color3.fromRGB(30,255,120)},
+ {name="Arcane Egg",      text="arcane egg",      luck="300K", color=Color3.fromRGB(110,90,255)},
+ {name="Toxic Egg",       text="toxic egg",       luck="500K", color=Color3.fromRGB(70,255,0)},
+ {name="Lava Egg",        text="lava egg",        luck="800K", color=Color3.fromRGB(255,45,0)},
+ {name="Reef Egg",        text="reef egg",        luck="1M",   color=Color3.fromRGB(255,105,125)},
+ {name="Nebula Egg",      text="nebula egg",      luck="3M",   color=Color3.fromRGB(225,200,255)},
+ {name="Phoenix Egg",     text="phoenix egg",     luck="5M",   color=Color3.fromRGB(255,95,20)},
+ {name="Hacker Egg",      text="hacker egg",      luck="8M",   color=Color3.fromRGB(0,200,90)},
+ {name="Desert Egg",      text="desert egg",      luck="10M",  color=Color3.fromRGB(240,210,120)},
+ {name="Mossy Ruins Egg", text="mossy ruins egg", luck="25M",  color=Color3.fromRGB(90,170,50)},
+ {name="Frozen Egg",      text="frozen egg",      luck="50M",  color=Color3.fromRGB(190,240,255)},
+ {name="Electric Egg",    text="electric egg",    luck="150M", color=Color3.fromRGB(0,230,255)},
+ {name="Rocket Egg",      text="rocket egg",      luck="300M", color=Color3.fromRGB(255,70,70)},
+ {name="Ocean Egg",       text="ocean egg",       luck="500M", color=Color3.fromRGB(60,170,255)},
+ {name="Queen Bee Egg",   text="queen bee egg",   luck="2B",   color=Color3.fromRGB(255,170,30)},
+ {name="Angel Egg",       text="angel egg",       luck="5B",   color=Color3.fromRGB(255,225,120)},
+ {name="Galaxy Egg",      text="galaxy egg",      luck="20B",  color=Color3.fromRGB(170,90,255)},
+ {name="Demon Egg",       text="demon egg",       luck="200B", color=Color3.fromRGB(190,20,20)},
+}
+for _,ty in ipairs(TYPES) do ty.on=(S.eggs[ty.text]==true) end
+S.notifyMin=math.clamp(math.floor(S.notifyMin),1,#TYPES)
+S.countSort=math.clamp(math.floor(S.countSort),1,2)
+
+--// =========================================================
+--// SPRACHE
+--// =========================================================
+local D={de={},en={}}
+local function add(k,de,en) D.de[k]=de D.en[k]=en end
+
+add("nav_start","Start","Start") add("nav_esp","ESP","ESP") add("nav_count","Anzahl","Count") add("nav_teleport","Teleport","Teleport")
+add("nav_visuals","Visuals","Visuals")
+add("nav_notifier","Notifier","Notifier") add("nav_player","Spieler","Player") add("nav_perf","Performance","Performance")
+add("nav_tools","Tools","Tools") add("nav_farm","Autofarm","Autofarm") add("nav_settings","Einstellungen","Settings")
+add("on","AN","ON") add("off","AUS","OFF") add("ready","Bereit","Ready")
+add("key_hint","%s = Menü an/aus","%s = toggle menu")
+-- Start
+add("welcome","Willkommen, %s","Welcome, %s")
+add("hero_sub","Eier finden, markieren und melden – alles an einem Ort.","Find, mark and announce eggs – all in one place.")
+add("hero_info","%d Eier  •  %d Sorten im Server","%d eggs  •  %d types in server")
+add("session","Session %s","Session %s")
+add("chip_fps","FPS","FPS") add("chip_ping","Ping","Ping") add("chip_players","Spieler","Players") add("chip_marked","Markiert","Marked")
+add("st_server","Im Server","In this server")
+add("st_quick","Schnellzugriff","Quick actions")
+add("c_rare","Seltenstes Ei","Rarest egg") add("c_near","Nächstes aktives Ei","Nearest active egg") add("c_total","Eier im Server","Eggs in server")
+add("rare_sub","Luck %s · %d× · %dm","Luck %s · %d× · %dm")
+add("rare_nopos","Luck %s · %d×","Luck %s · %d×")
+add("near_sub","%d m entfernt","%d m away")
+add("near_none","Eier im ESP-Tab aktivieren","Enable eggs in the ESP tab")
+add("total_val","%d gefunden","%d found")
+add("total_sub","%d markiert · %d Sorten","%d marked · %d types")
+add("st_found","Top-Funde","Top finds")
+add("found_none","Noch keine Eier gefunden. Der Hub scannt automatisch weiter.","No eggs found yet. The hub keeps scanning automatically.")
+add("st_mods","Module","Modules")
+add("m_esp","ESP","ESP") add("m_notify","Notifier","Notifier") add("m_quick","Quick-Event","Quick event") add("m_afk","Anti-AFK","Anti-AFK")
+add("st_tip","Credits","Credits")
+add("tip_title","Gemacht mit Liebe von Antonio","Made with Love by Antonio")
+add("tip1","Trete unserem Discord bei: discord.gg/saveegg","Join our Discord: discord.gg/saveegg")
+add("tip2","Alle wichtigen Infos und Updates findest du auf discord.gg/saveegg","Find all important information and updates at discord.gg/saveegg")
+add("tip3","Verpasse keine Neuigkeiten und schau auf discord.gg/saveegg vorbei","Don't miss any news – check out discord.gg/saveegg")
+add("tip4","Du brauchst Hilfe? Besuche unseren Discord: discord.gg/saveegg","Need help? Join our Discord: discord.gg/saveegg")
+add("tip5","Bleib auf dem Laufenden mit discord.gg/saveegg","Stay up to date with discord.gg/saveegg")
+add("tip6","Tritt der Community bei: discord.gg/saveegg","Join the community: discord.gg/saveegg")
+-- ESP
+add("esp_search","Ei suchen...","Search egg...")
+add("esp_btn_on","ESP: AN","ESP: ON") add("esp_btn_off","ESP: AUS","ESP: OFF")
+add("rescan","Neu scannen","Rescan")
+add("tracer_on","Tracer: AN","Tracer: ON") add("tracer_off","Tracer: AUS","Tracer: OFF") add("tracer_na","Tracer: n/a","Tracer: n/a")
+add("scanning","Scanne Map...","Scanning map...") add("scan_done","Scan fertig","Scan complete") add("scan_part","Scan unvollständig","Scan incomplete")
+add("targets","Ziele markiert: %d","Targets marked: %d")
+add("no_eggs","Keine aktivierten Eier gefunden","No enabled eggs found")
+-- Anzahl
+add("c_head","Eier im Server","Eggs in server")
+add("c_sum","%d Eier  •  %d Sorten  •  %d markiert","%d eggs  •  %d types  •  %d marked")
+add("c_only","Nur gefundene","Only found") add("c_only_sub","Sorten ohne Eier ausblenden","Hide types with no eggs")
+add("c_sort","Sortierung","Sorting") add("sort_luck","Nach Luck","By luck") add("sort_count","Nach Anzahl","By count")
+add("c_empty","Keine Eier gefunden – scanne neu im ESP-Tab.","No eggs found – rescan in the ESP tab.")
+-- Teleport
+add("tp_rare","Zum seltensten Ei","To rarest egg")
+add("tp_status","Klick auf ein Ei = Teleport zum nächsten dieser Sorte.","Click an egg = teleport to the nearest one of that type.")
+add("tp_none_type","%s: kein Ei im Server bekannt","%s: no egg known in this server")
+-- Visuals
+add("v_light","Beleuchtung","Lighting")
+add("fullbright","Fullbright","Fullbright") add("fb_sub","Alles dauerhaft hell","Keeps everything bright") add("fb_bright","Helligkeit","Brightness")
+add("nofog","Kein Nebel","No fog") add("nofog_sub","Entfernt Nebel und Atmosphäre","Removes fog and atmosphere")
+add("timefix","Tageszeit fixieren","Lock time of day") add("timefix_sub","Hält die Uhrzeit konstant","Keeps the clock constant") add("clock","Uhrzeit","Time")
+add("v_color","Farben","Colors")
+add("colboost","Farb-Boost","Color boost") add("colboost_sub","Sattere Farben und mehr Kontrast","Richer colors and more contrast") add("sat","Sättigung","Saturation")
+add("v_cam","Kamera","Camera")
+add("fov_on","FOV ändern","Change FOV") add("fov_sub","Wendet das eingestellte Sichtfeld an","Applies the selected field of view") add("fov_val","Sichtfeld (FOV)","Field of view (FOV)")
+add("zoom","Zoom (Taste C halten)","Zoom (hold C)") add("zoom_sub","Heranzoomen, um Eier früher zu sehen","Zoom in to spot eggs earlier") add("zoom_fov","Zoom-Stärke (FOV)","Zoom strength (FOV)")
+-- Notifier
+add("n_head","Benachrichtigung","Notification")
+add("n_on","Notifier aktiv","Notifier active") add("n_on_sub","Meldung, wenn ein seltenes Ei auftaucht","Alert when a rare egg appears")
+add("n_min","Ab Ei","From egg")
+add("n_sound","Sound","Sound") add("n_sound_sub","Kurzer Ton bei jeder Meldung","Short ping on every alert")
+add("n_test","Test-Benachrichtigung","Test notification")
+add("n_info","Gemeldet werden alle Eier ab der gewählten Sorte – unabhängig vom ESP-Schalter.","All eggs from the selected type upwards are reported – regardless of the ESP switch.")
+add("n_log","Verlauf","History")
+add("n_log_title","Letzte Meldungen","Latest alerts")
+add("n_log_none","Noch nichts gemeldet.","Nothing reported yet.")
+add("n_found","%s gefunden! (Luck %s)","%s found! (Luck %s)")
+add("n_test_msg","Test: %s gefunden!","Test: %s found!")
+-- Spieler
+add("p_move","Bewegung","Movement")
+add("speed","Speed","Speed") add("speed_sub","Eingestellte Laufgeschwindigkeit","Uses the selected walk speed") add("speed_val","Laufgeschwindigkeit","Walk speed")
+add("jump","Sprungkraft","Jump power") add("jump_sub","Eingestellte Sprungstärke","Uses the selected jump strength") add("jump_val","Sprungstärke","Jump strength")
+add("infjump","Infinite Jump","Infinite jump") add("infjump_sub","Springen in der Luft","Jump in mid-air")
+add("noclip","Noclip","Noclip") add("noclip_sub","Durch Wände laufen","Walk through walls")
+add("fly","Fliegen","Fly") add("fly_sub","WASD, Leertaste = hoch, Strg = runter","WASD, Space = up, Ctrl = down") add("fly_speed","Flug-Tempo","Fly speed")
+add("p_tp","Teleport & Charakter","Teleport & character")
+add("tp_egg","Zum nächsten Ei","To nearest egg") add("tp_none","Kein Ei gefunden","No egg found") add("tp_ok","Teleportiert zu %s","Teleported to %s")
+add("reset_char","Charakter zurücksetzen","Reset character")
+-- Performance
+add("f_live","Live","Live")
+add("f_live_t","FPS %s  •  Ping %s","FPS %s  •  Ping %s")
+add("f_gfx","Grafik","Graphics")
+add("shadows","Schatten aus","Shadows off") add("shadows_sub","Weniger GPU-Last","Less GPU load")
+add("part","Partikel aus","Particles off") add("part_sub","Deaktiviert Partikel-Effekte","Disables particle effects")
+add("fx","Effekte aus","Effects off") add("fx_sub","Blur, Bloom, Sonnenstrahlen & Co.","Blur, bloom, sun rays & co.")
+add("mat","Materialien vereinfachen","Simplify materials") add("mat_sub","Alles glatt – spart Rechenleistung","Everything smooth – saves performance")
+add("qual","Niedrigste Grafikstufe","Lowest graphics level") add("qual_sub","Setzt die Qualität auf Stufe 1","Sets quality to level 1")
+add("f_limit","Limits","Limits")
+add("cap","FPS-Limit","FPS cap") add("cap_sub","Begrenzt die Bildrate","Caps the frame rate") add("cap_val","Max. FPS","Max FPS")
+add("cap_na","FPS-Limit wird von deinem Executor nicht unterstützt.","FPS cap isn't supported by your executor.")
+add("f_afk","AFK-Modus","AFK mode")
+add("render3d","3D-Rendering aus","3D rendering off") add("render3d_sub","Schwarzer Bildschirm, spart extrem viel Leistung","Black screen, saves a huge amount of performance")
+add("afk_preset","AFK-Preset anwenden","Apply AFK preset") add("reset_all","Alles zurücksetzen","Reset everything")
+add("f_tip","Preset: Schatten, Partikel, Effekte und 3D-Rendering aus. Beim Entladen wird alles zurückgesetzt.","Preset: shadows, particles, effects and 3D rendering off. Everything is restored on unload.")
+-- Tools
+add("t_server","Server","Server") add("hop","Server Hop","Server hop") add("rejoin","Rejoin","Rejoin")
+add("t_char","Charakter","Character")
+add("respawn","Respawn","Respawn") add("respawn_pos","Respawn (gleiche Stelle)","Respawn (same spot)") add("respawning","Respawne...","Respawning...")
+add("t_misc","Sonstiges","Misc")
+add("afk","Anti-AFK","Anti-AFK") add("afk_sub","Verhindert den Idle-Kick","Prevents the idle kick")
+add("copy_id","Server-ID kopieren","Copy server ID") add("copy_ok","Server-ID kopiert","Server ID copied") add("copy_na","Zwischenablage nicht verfügbar","Clipboard not available")
+add("srv_search","Suche Server...","Searching servers...") add("srv_switch","Wechsle Server...","Switching server...")
+add("srv_tpfail","Teleport fehlgeschlagen","Teleport failed")
+add("srv_none","Kein Server gefunden, versuche Zufalls-Server...","No server found, trying a random one...")
+add("srv_hopfail","Server Hop fehlgeschlagen","Server hop failed")
+add("srv_retry","Server-Wechsel fehlgeschlagen, nochmal versuchen","Server switch failed, try again")
+add("rejoining","Rejoin...","Rejoining...")
+-- Autofarm
+add("a_head","Quick-Event","Quick event")
+add("a_on","Auto Quick-Event (x3)","Auto quick event (x3)") add("a_on_sub","Klickt die x3-Buttons automatisch","Clicks the x3 buttons automatically")
+add("a_delay","Klick-Verzögerung","Click delay")
+add("a_clicks","Geklickt: %d","Clicked: %d")
+add("a_status_on","Auto Quick-Event an","Auto quick event on") add("a_status_off","Auto Quick-Event aus","Auto quick event off")
+add("a_clicked","Quick-Event geklickt (%d)","Quick event clicked (%d)")
+add("a_delay_set","Verzögerung: %ss","Delay: %ss")
+add("a_more","Weitere Autofarm-Module kommen demnächst.","More autofarm modules will go here soon.")
+-- Einstellungen
+add("s_lang","Sprache","Language") add("s_lang_t","Menüsprache","Menu language")
+add("lang_de","Deutsch","Deutsch") add("lang_en","English","English")
+add("s_general","Allgemein","General")
+add("s_design","Design","Design")
+add("s_theme","Hintergrund","Background")
+add("th_dark","Dunkel","Dark") add("th_mid","Mitternacht","Midnight") add("th_amoled","AMOLED","AMOLED") add("th_light","Hell","Light")
+add("s_accent","Akzentfarbe","Accent color")
+add("s_custom","Eigene Farbe","Custom color") add("s_custom_sub","Akzentfarbe selbst mischen","Mix your own accent color")
+add("red","Rot","Red") add("green","Grün","Green") add("blue","Blau","Blue")
+add("s_font","Menü-Schriftart","Menu font")
+add("s_scale","Menü-Größe","Menu size")
+add("s_anim","Animationen","Animations") add("s_anim_sub","Weiche Übergänge im Menü","Smooth transitions in the menu")
+add("s_border","Rahmen-Animation","Border animation") add("s_border_sub","Rotierender Farbverlauf am Rand","Rotating gradient on the border")
+add("s_tips","Tipps anzeigen","Show tips") add("s_tips_sub","Tipp-Karte auf der Startseite","Tip card on the start page")
+add("s_center","Menü zentrieren","Center menu")
+add("s_key","Menü-Taste: %s","Menu key: %s") add("s_key_wait","Taste drücken... (Esc = abbrechen)","Press a key... (Esc = cancel)")
+add("s_esp","ESP-Darstellung","ESP appearance")
+add("s_hl","Highlight","Highlight") add("s_hl_sub","Farbige Füllung der Eier","Colored fill on eggs")
+add("s_hlo","Highlight-Umriss","Highlight outline") add("s_hlo_sub","Weißer Rand um die Eier","White outline around eggs")
+add("s_fill","Highlight-Transparenz","Highlight transparency")
+add("s_pulse","Pulsieren","Pulse") add("s_pulse_sub","Highlight blinkt sanft","Highlight fades softly in and out")
+add("s_name","Name anzeigen","Show name") add("s_luck","Luck anzeigen","Show luck") add("s_dist","Entfernung anzeigen","Show distance") add("s_size","Größe anzeigen","Show size")
+add("s_short","Kurze Namen","Short names") add("s_short_sub","„Egg“ im ESP-Text weglassen","Drop “Egg” in the ESP text")
+add("size","Größe","Size")
+add("s_tsize","ESP-Textgröße","ESP text size") add("s_efont","ESP-Schriftart","ESP font")
+add("s_maxd","Max. Entfernung","Max. distance") add("s_inf","Unbegrenzt","Unlimited")
+add("s_tracer","Tracer","Tracers") add("s_tracer_sub","Linie zu jedem Ei (Drawing nötig)","Line to every egg (needs Drawing)")
+add("s_torigin","Tracer-Start","Tracer origin")
+add("o_bottom","Unten","Bottom") add("o_center","Mitte","Center") add("o_top","Oben","Top")
+add("s_tw","Tracer-Dicke","Tracer thickness")
+add("s_tpsec","Teleport & Scan","Teleport & scan")
+add("s_tph","Teleport-Höhe","Teleport height")
+add("s_scani","Auto-Scan Intervall","Auto-scan interval")
+add("s_notif","Benachrichtigungen","Notifications") add("s_ttime","Anzeigedauer","Display time")
+add("s_data","Daten","Data")
+add("s_save_info","Einstellungen werden automatisch gespeichert.","Settings are saved automatically.")
+add("s_save_na","Dein Executor kann keine Dateien speichern – Einstellungen gelten nur für diese Sitzung.","Your executor can't save files – settings only last for this session.")
+add("s_reset","Einstellungen zurücksetzen","Reset settings")
+add("s_reset_msg","Zurückgesetzt – bitte Skript neu ausführen","Reset – please run the script again")
+add("s_unload","Hub entladen","Unload hub")
+add("ghost_tag","gemerkt (zuletzt gesehen)","remembered (last seen)")
+add("s_ghost","Entfernte Eier merken","Remember distant eggs")
+add("s_ghost_sub","Eier bleiben sichtbar, auch wenn das Spiel sie ausblendet","Eggs stay visible even when the game streams them out")
+add("esp_dist","ESP-Reichweite","ESP range")
+add("esp_cache_clear","Gemerkte Eier leeren","Clear remembered eggs")
+add("t_sweep","Fern-Scan","Far scan")
+add("sweep_r","Sweep-Radius","Sweep radius")
+add("sweep_btn","Karte nach Eiern absuchen","Sweep map for eggs")
+add("sweep_stop","Sweep stoppen","Stop sweep")
+add("sweep_prog","Sweep: %d/%d  •  %d Eier bekannt","Sweep: %d/%d  •  %d eggs known")
+add("sweep_done","Sweep beendet – %d Eier bekannt","Sweep finished – %d eggs known")
+add("sweep_na","Dein Executor/Spiel unterstützt RequestStreamAroundAsync nicht.","Your executor/game doesn't support RequestStreamAroundAsync.")
+add("sweep_off","Streaming ist in diesem Spiel aus – alle Eier werden schon erkannt.","Streaming is off in this game – all eggs are already detected.")
+add("sweep_info","Lädt die Map Stück für Stück nach, damit weit entfernte Eier erkannt und gemerkt werden. Kann kurz ruckeln.","Loads the map piece by piece so far-away eggs get detected and remembered. May stutter briefly.")
+
+local langFns,textObjs={}, {}
+local function tr(k) local t=D[S.lang] return (t and t[k]) or D.de[k] or k end
+local function trf(k,...) local ok,r=pcall(string.format,tr(k),...) if ok then return r end return tr(k) end
+local function onLang(fn) langFns[#langFns+1]=fn pcall(fn) end
+local function reg(o,key,prop)
+ prop=prop or "Text"
+ textObjs[#textObjs+1]={o,key,prop}
+ o[prop]=tr(key)
+ return o
+end
+
+--// =========================================================
+--// THEME / SCHRIFT / HELPER
+--// =========================================================
+local function rgb(r,g,b) return Color3.fromRGB(r,g,b) end
+local THEMES={
+ {bg=rgb(14,15,22),side=rgb(18,19,29),item=rgb(27,29,43),hover=rgb(38,41,60),off=rgb(58,62,84),border=rgb(44,47,68),txt=rgb(240,242,255),sub=rgb(140,146,175)},
+ {bg=rgb(10,16,30),side=rgb(13,21,40),item=rgb(20,32,58),hover=rgb(30,46,80),off=rgb(48,66,104),border=rgb(36,54,90),txt=rgb(232,240,255),sub=rgb(130,150,190)},
+ {bg=rgb(0,0,0),side=rgb(8,8,10),item=rgb(16,16,20),hover=rgb(28,28,34),off=rgb(50,50,58),border=rgb(34,34,42),txt=rgb(245,245,250),sub=rgb(130,130,145)},
+ {bg=rgb(240,242,248),side=rgb(228,231,241),item=rgb(254,254,255),hover=rgb(232,235,246),off=rgb(190,195,212),border=rgb(208,213,228),txt=rgb(28,30,44),sub=rgb(100,106,130)},
+}
+local ACCENTS={
+ {c1=rgb(124,92,255),c2=rgb(64,190,255)},
+ {c1=rgb(64,140,255),c2=rgb(70,230,255)},
+ {c1=rgb(40,200,120),c2=rgb(170,255,90)},
+ {c1=rgb(240,70,90),c2=rgb(255,150,70)},
+ {c1=rgb(255,140,40),c2=rgb(255,215,70)},
+ {c1=rgb(240,90,190),c2=rgb(170,100,255)},
+ {c1=rgb(0,210,200),c2=rgb(60,130,255)},
+ {c1=rgb(220,220,235),c2=rgb(130,140,170)},
+}
+local function ef(n)
+ local ok,v=pcall(function() return Enum.Font[n] end)
+ if ok and v then return v end
+ return Enum.Font.Gotham
+end
+local FAMILIES={
+ {n="Gotham",r="Gotham",m="GothamMedium",b="GothamBold",k="GothamBlack"},
+ {n="Source Sans",r="SourceSans",m="SourceSansSemibold",b="SourceSansBold",k="SourceSansBold"},
+ {n="Arial",r="Arial",m="Arial",b="ArialBold",k="ArialBold"},
+ {n="Ubuntu",r="Ubuntu",m="Ubuntu",b="Ubuntu",k="Ubuntu"},
+ {n="Roboto",r="Roboto",m="Roboto",b="Roboto",k="Roboto"},
+ {n="Nunito",r="Nunito",m="Nunito",b="Nunito",k="Nunito"},
+ {n="Code",r="Code",m="Code",b="Code",k="Code"},
+ {n="Sci-Fi",r="SciFi",m="SciFi",b="SciFi",k="SciFi"},
+ {n="Fredoka",r="FredokaOne",m="FredokaOne",b="FredokaOne",k="FredokaOne"},
+}
+for _,f in ipairs(FAMILIES) do
+ f.E={r=ef(f.r),m=ef(f.m),b=ef(f.b),k=ef(f.k)}
+end
+if S.font<1 or S.font>#FAMILIES then S.font=1 end
+if S.espFont<1 or S.espFont>#FAMILIES then S.espFont=1 end
+if S.theme<1 or S.theme>#THEMES then S.theme=1 end
+if S.accent<1 or S.accent>#ACCENTS then S.accent=1 end
+
+local C={good=rgb(80,220,140),bad=rgb(235,70,95)}
+local BKEYS={"bg","side","item","hover","off","border","txt","sub","acc","acc2"}
+local function applyColors()
+ local th=THEMES[S.theme] or THEMES[1]
+ for _,k in ipairs({"bg","side","item","hover","off","border","txt","sub"}) do C[k]=th[k] end
+ if S.custom then
+  C.acc=Color3.fromRGB(S.accR,S.accG,S.accB)
+  local h,s,v=C.acc:ToHSV()
+  C.acc2=Color3.fromHSV((h-0.12)%1,math.clamp(s*0.9,0,1),math.clamp(v+0.1,0,1))
+ else
+  local a=ACCENTS[S.accent] or ACCENTS[1]
+  C.acc=a.c1 C.acc2=a.c2
+ end
+end
+applyColors()
+
+local binds,fontObjs,themeFns={}, {}, {}
+local FONTW={[Enum.Font.Gotham]="r",[Enum.Font.GothamMedium]="m",[Enum.Font.GothamBold]="b",[Enum.Font.GothamBlack]="k"}
+local function fontOf(w) return FAMILIES[S.font].E[w] end
+local function espFontEnum() return FAMILIES[S.espFont].E.b end
+
+local MAXSIZE=30
+local WIN_W,WIN_H=640,420
+
+local function new(cls,props,parent,nobind)
+ local o=Instance.new(cls)
+ local fw
+ if props.Font then
+  fw=FONTW[props.Font]
+  if fw then props.Font=fontOf(fw) end
+ end
+ for k,v in pairs(props) do
+  o[k]=v
+  if not nobind and typeof(v)=="Color3" then
+   for _,key in ipairs(BKEYS) do
+    if C[key]==v then binds[#binds+1]={o,k,key} break end
+   end
+  end
+ end
+ if fw then fontObjs[#fontObjs+1]={o,fw} end
+ o.Parent=parent
+ return o
+end
+local function raw(cls,props,parent)
+ local o=Instance.new(cls)
+ for k,v in pairs(props) do o[k]=v end
+ o.Parent=parent
+ return o
+end
+local function round(o,r) return new("UICorner",{CornerRadius=UDim.new(0,r)},o) end
+local function stroke(o,col,t) return new("UIStroke",{Color=col,Thickness=1,Transparency=t or 0.3,ApplyStrokeMode=Enum.ApplyStrokeMode.Border},o) end
+local function tw(o,props,t,style,dir)
+ local tween=TS:Create(o,TweenInfo.new(S.anim and (t or 0.2) or 0,style or Enum.EasingStyle.Quad,dir or Enum.EasingDirection.Out),props)
+ tween:Play()
+ return tween
+end
+local function grad(o,c1,c2,rot) return new("UIGradient",{Color=ColorSequence.new(c1,c2),Rotation=rot or 0},o,true) end
+local function themed(fn) themeFns[#themeFns+1]=fn pcall(fn) return fn end
+local function gradT(o,k1,k2,rot)
+ local g=new("UIGradient",{Rotation=rot or 0},o,true)
+ themed(function() g.Color=ColorSequence.new(C[k1],C[k2]) end)
+ return g
+end
+local counters=setmetatable({},{__mode="k"})
+local function ord(parent,o)
+ if o then return o end
+ counters[parent]=(counters[parent] or 0)+1
+ return counters[parent]
+end
+local function colorOf(c) if type(c)=="string" then return C[c] end return c end
+
+local function refreshTheme()
+ applyColors()
+ for i=#binds,1,-1 do
+  local b=binds[i]
+  if b[1].Parent then pcall(function() b[1][b[2]]=C[b[3]] end) else table.remove(binds,i) end
+ end
+ for _,f in ipairs(themeFns) do pcall(f) end
+end
+local function applyFonts()
+ for i=#fontObjs,1,-1 do
+  local e=fontObjs[i]
+  if e[1].Parent then pcall(function() e[1].Font=fontOf(e[2]) end) else table.remove(fontObjs,i) end
+ end
+end
+local function setLang(l)
+ S.lang=l
+ save()
+ for i=#textObjs,1,-1 do
+  local e=textObjs[i]
+  if e[1].Parent then pcall(function() e[1][e[3]]=tr(e[2]) end) else table.remove(textObjs,i) end
+ end
+ for _,f in ipairs(langFns) do pcall(f) end
+end
+
+local function guiParent()
+ local ok,r=pcall(function() return (gethui and gethui()) or game:GetService("CoreGui") end)
+ if ok and r then return r end
+ return P:WaitForChild("PlayerGui")
+end
+local gui=new("ScreenGui",{Name="AntonioHub",ResetOnSpawn=false,DisplayOrder=999,ZIndexBehavior=Enum.ZIndexBehavior.Sibling},guiParent(),true)
+
+--// Vorwaerts-Deklarationen
+local cur=nil
+local setEspStatus=function() end
+local setToolStatus=function() end
+local setFarmStatus=function() end
+local closeHub=function() end
+local refreshKey=function() end
+local applyTips=function() end
+local updateCount=function() end
+local updateTeleport=function() end
+local eggRows={}
+local main
+
+--// =========================================================
+--// ESP KERN  (Fix: Eier verschwinden nicht mehr)
+--// =========================================================
+local prompts,marks={}, {}
+local lastCounts,allCounts,lastTargets={}, {}, {}
+local scanning=false
+local notified={}
+local HL_MAX=28 -- Roblox zeigt nur ca. 31 Highlights gleichzeitig
+
+-- Text normalisieren: Kleinbuchstaben, Tags weg, "&" = "and", nur Buchstaben/Zahlen
+local typeOfPrompt,targetOf,sizeOf,partOf,addPrompt
+do
+local function norm(s)
+ s=string.lower(s or "")
+ s=s:gsub("<[^>]+>","")
+ s=s:gsub("&amp;","&")
+ s=s:gsub("&"," and ")
+ s=s:gsub("[^%a%d]","")
+ return s
+end
+local KEY2IDX,KEYLIST={}, {}
+for i,ty in ipairs(TYPES) do
+ local k=norm(ty.text)
+ KEY2IDX[k]=i
+ KEYLIST[#KEYLIST+1]={k=k,i=i}
+end
+table.sort(KEYLIST,function(a,b) return #a.k>#b.k end)
+local mcache={}
+local function matchKey(s)
+ if s==nil or s=="" then return nil end
+ local c=mcache[s]
+ if c~=nil then return c or nil end
+ local k=norm(s)
+ local r
+ if k~="" then
+  r=KEY2IDX[k]
+  if not r then
+   for _,e in ipairs(KEYLIST) do
+    if string.find(k,e.k,1,true) then r=e.i break end
+   end
+  end
+ end
+ mcache[s]=r or false
+ return r
+end
+
+function typeOfPrompt(p)
+ local ti=matchKey(p.ObjectText)
+ if ti then return ti end
+ ti=matchKey(p.ActionText)
+ if ti then return ti end
+ local a=p.Parent
+ for _=1,2 do
+  if not a then break end
+  if a:IsA("Attachment") then a=a.Parent end
+  if not a or a==workspace then break end
+  ti=matchKey(a.Name)
+  if ti then return ti end
+  a=a.Parent
+ end
+ return nil
+end
+
+function sizeOf(o)
+ local ok,s=pcall(function()
+  if o:IsA("Model") then return o:GetExtentsSize() end
+  return o.Size
+ end)
+ if ok and s then return s end
+end
+local function tooBig(o)
+ local s=sizeOf(o)
+ return s~=nil and math.max(s.X,s.Y,s.Z)>MAXSIZE
+end
+function partOf(o)
+ if not o then return nil end
+ if o:IsA("BasePart") then return o end
+ if o:IsA("Model") then return o.PrimaryPart or o:FindFirstChildWhichIsA("BasePart",true) end
+ return nil
+end
+
+local function eggTarget(p)
+ local base=p.Parent
+ if base and base:IsA("Attachment") then base=base.Parent end
+ if not base then return nil end
+ local best=base
+ local a=base.Parent
+ for _=1,3 do
+  if not a or a==workspace or not a:IsA("Model") then break end
+  if tooBig(a) then break end
+  best=a
+  a=a.Parent
+ end
+ return best,base
+end
+local tcache=setmetatable({},{__mode="k"})
+function targetOf(p,now)
+ local e=tcache[p]
+ if e and now-e.t<3 and e.best.Parent and e.base.Parent then return e.best,e.base end
+ local best,base=eggTarget(p)
+ if best then tcache[p]={best=best,base=base,t=now} end
+ return best,base
+end
+
+function addPrompt(o)
+ if o:IsA("ProximityPrompt") then prompts[o]=true end
+end
+
+end
+
+local cache={}
+local objKey=setmetatable({},{__mode="k"})
+local keyN=0
+local ghostFolder
+local sweeping=false
+local hasStreamReq=false
+pcall(function() hasStreamReq=(P.RequestStreamAroundAsync~=nil) end)
+
+local function streamingInfo()
+ local en,sr=false,1024
+ pcall(function() en=workspace.StreamingEnabled sr=workspace.StreamingTargetRadius end)
+ if type(sr)~="number" or sr<=0 then sr=1024 end
+ return en,sr
+end
+
+local function unmark(k)
+ local m=marks[k]
+ if not m then return end
+ pcall(function() if m.hl then m.hl:Destroy() end end)
+ pcall(function() m.bb:Destroy() end)
+ pcall(function() if m.ghostPart then m.ghostPart:Destroy() end end)
+ if m.line then pcall(function() m.line:Remove() end) end
+ marks[k]=nil
+end
+
+local function getFolder()
+ if ghostFolder and ghostFolder.Parent then return ghostFolder end
+ ghostFolder=Instance.new("Folder")
+ ghostFolder.Name="AntonioGhost"
+ ghostFolder.Parent=workspace.CurrentCamera or workspace
+ return ghostFolder
+end
+
+-- Markierung: live (echtes Ei) oder "Geist" (Ei ist aus der Streaming-Reichweite, Position wird gemerkt)
+local function mark(k,e)
+ local ty=TYPES[e.ti]
+ local obj=e.obj
+ local part,ghostPart
+ if obj then
+  part=partOf(obj)
+  if not part then return end
+ else
+  pcall(function()
+   ghostPart=raw("Part",{Name="AntonioGhost",Anchored=true,CanCollide=false,CanQuery=false,CanTouch=false,Transparency=1,Size=Vector3.new(1,1,1),CFrame=CFrame.new(e.pos)},getFolder())
+  end)
+  if not ghostPart then return end
+  part=ghostPart
+ end
+ local hl,bb,lb
+ local ok=pcall(function()
+  if obj then
+   hl=raw("Highlight",{Adornee=obj,FillColor=ty.color,OutlineColor=Color3.new(1,1,1),DepthMode=Enum.HighlightDepthMode.AlwaysOnTop,Enabled=false},gui)
+  end
+  bb=raw("BillboardGui",{Adornee=part,AlwaysOnTop=true,Size=UDim2.fromOffset(260,110),StudsOffset=Vector3.new(0,4,0),MaxDistance=math.huge},gui)
+  lb=raw("TextLabel",{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,TextColor3=ty.color,TextStrokeTransparency=0,Font=espFontEnum(),TextSize=S.textSize,Text=ty.name},bb)
+ end)
+ if not ok then
+  if hl then pcall(function() hl:Destroy() end) end
+  if bb then pcall(function() bb:Destroy() end) end
+  if ghostPart then pcall(function() ghostPart:Destroy() end) end
+  return
+ end
+ local line
+ if Drawing then
+  local ok2,l=pcall(function() return Drawing.new("Line") end)
+  if ok2 and l then line=l line.Color=ty.color line.Thickness=S.tracerW line.Visible=false end
+ end
+ marks[k]={hl=hl,bb=bb,lb=lb,line=line,part=part,ghostPart=ghostPart,obj=obj,ghost=(obj==nil),big=e.big or 0,ti=e.ti,allow=true,d=0}
+end
+
+local function updateTargets()
+ local now=tick()
+ local c=P.Character
+ local hrp=c and c:FindFirstChild("HumanoidRootPart")
+ local hrpPos=hrp and hrp.Position
+ local items={}
+ for p in pairs(prompts) do
+  if not p.Parent then
+   prompts[p]=nil
+  else
+   local ti=typeOfPrompt(p)
+   if ti then
+    local best,base=targetOf(p,now)
+    if best and not (c and best:IsDescendantOf(c)) then
+     items[#items+1]={ti=ti,best=best,base=base}
+    end
+   end
+  end
+ end
+ local groups={}
+ for _,it in ipairs(items) do
+  local g=groups[it.best]
+  if not g then g={} groups[it.best]=g end
+  g[#g+1]=it
+ end
+ local final={}
+ for best,g in pairs(groups) do
+  local split=false
+  if #g>1 then
+   local p1=partOf(g[1].base)
+   for i=2,#g do
+    local it=g[i]
+    if it.ti~=g[1].ti then split=true break end
+    if it.base~=g[1].base then
+     local p2=partOf(it.base)
+     if p1 and p2 and (p1.Position-p2.Position).Magnitude>8 then split=true break end
+    end
+   end
+  end
+  if split then
+   for _,it in ipairs(g) do final[it.base]=it.ti end
+  else
+   final[best]=g[1].ti
+  end
+ end
+ -- Live-Eier in den Cache schreiben (Cache = bekannte Eier inkl. entfernter)
+ local seen={}
+ for t,ti in pairs(final) do
+  local pt=partOf(t)
+  if pt and pt.Parent then
+   local pos=pt.Position
+   local k=objKey[t]
+   local e=k and cache[k]
+   if not (e and e.ti==ti and not seen[k]) then
+    e=nil k=nil
+    local bestD=10
+    for ck,ce in pairs(cache) do
+     if ce.ti==ti and not seen[ck] and (not ce.obj or not ce.obj.Parent) then
+      local dd=(ce.pos-pos).Magnitude
+      if dd<bestD then bestD=dd k=ck e=ce end
+     end
+    end
+    if not e then
+     keyN=keyN+1
+     k="e"..keyN
+     e={ti=ti}
+     cache[k]=e
+    end
+    objKey[t]=k
+   end
+   e.obj=t e.pos=pos e.live=true e.t=now
+   if not e.big then
+    local sz=sizeOf(t)
+    e.big=sz and math.max(sz.X,sz.Y,sz.Z) or 0
+   end
+   seen[k]=true
+  end
+ end
+ -- nicht gesehene Eier: zu "Geistern" machen oder verwerfen
+ local en,sr=streamingInfo()
+ local rem=sr*0.6
+ for k,e in pairs(cache) do
+  if not seen[k] then
+   e.live=false e.obj=nil
+   local drop=false
+   if not S.ghost or not en then drop=true
+   elseif hrpPos and (e.pos-hrpPos).Magnitude<rem then drop=true
+   elseif now-(e.t or now)>1800 then drop=true end
+   if drop then cache[k]=nil end
+  end
+ end
+ local want,counts,all={}, {}, {}
+ for k,e in pairs(cache) do
+  all[e.ti]=(all[e.ti] or 0)+1
+  if TYPES[e.ti].on then
+   counts[e.ti]=(counts[e.ti] or 0)+1
+   if S.espOn then want[k]=e end
+  end
+ end
+ for k,e in pairs(want) do
+  local m=marks[k]
+  if m then
+   local okm=(m.ti==e.ti) and (m.obj==e.obj) and m.part and m.part.Parent
+   if okm and e.obj then okm=(m.part==e.obj or m.part:IsDescendantOf(e.obj)) end
+   if not okm then unmark(k) m=nil end
+  end
+  if not m then pcall(mark,k,e) end
+ end
+ for k in pairs(marks) do
+  if not want[k] then unmark(k) end
+ end
+ allCounts=all
+ lastCounts=counts
+ lastTargets=cache
+ return counts
+end
+
+local function clearGhosts()
+ for k,e in pairs(cache) do
+  if not e.live then cache[k]=nil end
+ end
+ pcall(updateTargets)
+end
+
+-- Fern-Scan: laedt die Map rasterweise nach (Player:RequestStreamAroundAsync) und merkt sich alle Eier
+local function runSweep(radius,onProg,onDone)
+ if sweeping then return false end
+ local c=P.Character
+ local hrp=c and c:FindFirstChild("HumanoidRootPart")
+ if not hrp then return false end
+ sweeping=true
+ task.spawn(function()
+  local center=hrp.Position
+  local _,sr=streamingInfo()
+  local step=math.max(200,sr*1.3)
+  local n=math.floor(radius/step)
+  local pts={}
+  for ix=-n,n do
+   for iz=-n,n do
+    local off=Vector3.new(ix*step,0,iz*step)
+    if off.Magnitude<=radius+step*0.5 then pts[#pts+1]=center+off end
+   end
+  end
+  table.sort(pts,function(a,b) return (a-center).Magnitude<(b-center).Magnitude end)
+  local total=#pts
+  for i,pt in ipairs(pts) do
+   if not alive or not sweeping then break end
+   pcall(function() P:RequestStreamAroundAsync(pt,3) end)
+   pcall(updateTargets)
+   local cnt=0
+   for _ in pairs(cache) do cnt=cnt+1 end
+   if onProg then pcall(onProg,i,total,cnt) end
+   task.wait(0.1)
+  end
+  sweeping=false
+  local cnt=0
+  for _ in pairs(cache) do cnt=cnt+1 end
+  if onDone then pcall(onDone,cnt) end
+ end)
+ return true
+end
+
+local function markCount()
+ local n=0
+ for _ in pairs(marks) do n=n+1 end
+ return n
+end
+local function summary(counts)
+ local parts={}
+ for i,ty in ipairs(TYPES) do
+  if counts[i] then parts[#parts+1]=ty.name..": "..counts[i] end
+ end
+ return #parts>0 and table.concat(parts,"  |  ") or tr("no_eggs")
+end
+
+local function fullScan(manual)
+ if scanning then return end
+ scanning=true
+ if manual then setEspStatus(tr("scanning")) end
+ task.spawn(function()
+  local ok=pcall(function()
+   local d=workspace:GetDescendants()
+   for i=1,#d do
+    if not alive then return end
+    pcall(addPrompt,d[i])
+    if i%500==0 then task.wait() end
+   end
+  end)
+  scanning=false
+  if not alive then return end
+  local counts={}
+  pcall(function() counts=updateTargets() end)
+  if manual then
+   setEspStatus(tr(ok and "scan_done" or "scan_part").."\n"..summary(counts))
+  end
+ end)
+end
+conn(workspace.DescendantAdded:Connect(function(o) pcall(addPrompt,o) end))
+
+local function nearestEgg(onlyOn)
+ local c=P.Character
+ local hrp=c and c:FindFirstChild("HumanoidRootPart")
+ if not hrp then return nil end
+ local be,bd
+ for _,e in pairs(lastTargets) do
+  if not onlyOn or TYPES[e.ti].on then
+   local d=(e.pos-hrp.Position).Magnitude
+   if not bd or d<bd then be,bd=e,d end
+  end
+ end
+ return be,bd
+end
+
+-- pro Sorte: naechstes Ei + Entfernung
+local function eggStats()
+ local c=P.Character
+ local hrp=c and c:FindFirstChild("HumanoidRootPart")
+ local nd,ne={}, {}
+ for _,e in pairs(lastTargets) do
+  local d=hrp and (e.pos-hrp.Position).Magnitude or math.huge
+  if nd[e.ti]==nil or d<nd[e.ti] then nd[e.ti]=d ne[e.ti]=e end
+ end
+ return nd,ne
+end
+local function rarestEgg()
+ local bi
+ for _,e in pairs(lastTargets) do
+  if not bi or e.ti>bi then bi=e.ti end
+ end
+ if not bi then return nil end
+ local _,ne=eggStats()
+ return ne[bi]
+end
+
+--// =========================================================
+--// QUICK-EVENT KERN
+--// =========================================================
+local quickOn,QUICK_DELAY,quickClicks=false,0.4,0
+do
+local GS=game:GetService("GuiService")
+local VIM=game:GetService("VirtualInputManager")
+local QUICK_RETRY=0.6
+local QUICK_TRIES=4
+local pgui=P:WaitForChild("PlayerGui")
+local qc,clicked,firstSeen,lastClick={}, {}, {}, {}
+
+local function evalQ(o)
+ if o:IsA("TextLabel") or o:IsA("TextButton") then
+  local t=o.Text:gsub("<[^>]+>","")
+  t=t:lower():gsub("\195\151","x")
+  if #t<=6 and (t:match("^%s*x%s*3%s*$") or t:match("^%s*3%s*x%s*$")) then
+   qc[o]=true
+  else
+   qc[o]=nil
+  end
+ end
+end
+conn(pgui.DescendantAdded:Connect(evalQ))
+task.spawn(function()
+ local d=pgui:GetDescendants()
+ for i=1,#d do
+  if not alive then return end
+  evalQ(d[i])
+  if i%300==0 then RS.Heartbeat:Wait() end
+ end
+end)
+
+local function visible(o)
+ local a=o
+ while a and a:IsA("GuiObject") do
+  if not a.Visible then return false end
+  a=a.Parent
+ end
+ local sgui=o:FindFirstAncestorOfClass("ScreenGui")
+ return o.AbsoluteSize.X>5 and (not sgui or sgui.Enabled)
+end
+local function clickTarget(o)
+ local a=o
+ for _=1,4 do
+  if a and a:IsA("GuiButton") then return a end
+  a=a and a.Parent
+ end
+ if o.Parent and o.Parent:IsA("GuiObject") then return o.Parent end
+ return o
+end
+local function press(b,coords)
+ local usedSignal=false
+ if b:IsA("GuiButton") then
+  if firesignal then
+   for _,s in ipairs({b.MouseButton1Down,b.MouseButton1Up,b.MouseButton1Click,b.Activated}) do pcall(firesignal,s) end
+   usedSignal=true
+  elseif getconnections then
+   for _,s in ipairs({b.MouseButton1Click,b.Activated}) do
+    for _,c in ipairs(getconnections(s)) do pcall(function() c:Fire() end) end
+   end
+   usedSignal=true
+  end
+ end
+ if coords or not usedSignal then
+  local sgui=b:FindFirstAncestorOfClass("ScreenGui")
+  local inset=(sgui and sgui.IgnoreGuiInset) and Vector2.new(0,0) or GS:GetGuiInset()
+  local c=b.AbsolutePosition+b.AbsoluteSize/2+inset
+  pcall(function()
+   VIM:SendMouseButtonEvent(c.X,c.Y,0,true,game,0)
+   task.wait(0.03)
+   VIM:SendMouseButtonEvent(c.X,c.Y,0,false,game,0)
+  end)
+ end
+end
+
+task.spawn(function()
+ while alive do
+  if quickOn then
+   local now=tick()
+   for o in pairs(qc) do
+    if not o.Parent then
+     qc[o]=nil clicked[o]=nil firstSeen[o]=nil lastClick[o]=nil
+    elseif visible(o) then
+     firstSeen[o]=firstSeen[o] or now
+     local n=clicked[o] or 0
+     local due=(n==0 and now-firstSeen[o]>=QUICK_DELAY) or (n>0 and now-(lastClick[o] or 0)>=QUICK_RETRY)
+     if n<QUICK_TRIES and due then
+      clicked[o]=n+1
+      lastClick[o]=now
+      if n==0 then quickClicks=quickClicks+1 end
+      pcall(press,clickTarget(o),n>=1)
+      setFarmStatus(trf("a_clicked",n+1))
+     end
+    else
+     clicked[o]=nil firstSeen[o]=nil lastClick[o]=nil
+    end
+   end
+  end
+  task.wait(0.1)
+ end
+end)
+end
+
+--// =========================================================
+--// TOOLS KERN
+--// =========================================================
+local hopping=false
+local afkOn=true
+conn(P.Idled:Connect(function()
+ if afkOn then pcall(function() VU:CaptureController() VU:ClickButton2(Vector2.new()) end) end
+end))
+
+local function httpGet(url)
+ local ok,res=pcall(function() return game:HttpGet(url) end)
+ if ok and type(res)=="string" and #res>0 then return res end
+ local req=(syn and syn.request) or request or http_request or (http and http.request)
+ if req then
+  local ok2,r=pcall(req,{Url=url,Method="GET"})
+  if ok2 and r and r.Body then return r.Body end
+ end
+ return nil
+end
+
+local function serverHop()
+ if hopping then return end
+ hopping=true
+ task.spawn(function()
+  setToolStatus(tr("srv_search"))
+  local picked
+  pcall(function()
+   local url="https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100"
+   local body=httpGet(url)
+   if not body then return end
+   local data=HttpService:JSONDecode(body)
+   local pool={}
+   for _,s in ipairs(data.data or {}) do
+    if s.id~=game.JobId and s.playing and s.maxPlayers and s.playing<s.maxPlayers-1 then
+     pool[#pool+1]=s.id
+    end
+   end
+   if #pool>0 then picked=pool[math.random(1,#pool)] end
+  end)
+  if not alive then return end
+  if picked then
+   setToolStatus(tr("srv_switch"))
+   local ok=pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId,picked,P) end)
+   if not ok then setToolStatus(tr("srv_tpfail")) end
+  else
+   setToolStatus(tr("srv_none"))
+   local ok=pcall(function() TeleportService:Teleport(game.PlaceId,P) end)
+   if not ok then setToolStatus(tr("srv_hopfail")) end
+  end
+  task.wait(5)
+  hopping=false
+ end)
+end
+conn(TeleportService.TeleportInitFailed:Connect(function()
+ setToolStatus(tr("srv_retry"))
+ hopping=false
+end))
+
+local function rejoin()
+ setToolStatus(tr("rejoining"))
+ pcall(function()
+  if #Players:GetPlayers()<=1 then
+   TeleportService:Teleport(game.PlaceId,P)
+  else
+   TeleportService:TeleportToPlaceInstance(game.PlaceId,game.JobId,P)
+  end
+ end)
+end
+
+--// =========================================================
+--// MODULE (Schalter, die an mehreren Stellen im Menü vorkommen)
+--// =========================================================
+local notifyOn=false
+local MOD={}
+local function defMod(name,get,set) MOD[name]={get=get,set=set,views={}} end
+local function modSet(name,v)
+ local m=MOD[name]
+ m.set(v)
+ for _,f in ipairs(m.views) do pcall(f,v) end
+end
+defMod("esp",function() return S.espOn end,function(v) S.espOn=v save() pcall(updateTargets) end)
+defMod("notify",function() return notifyOn end,function(v)
+ notifyOn=v
+ if v then for t in pairs(lastTargets) do notified[t]=true end end
+end)
+defMod("quick",function() return quickOn end,function(v)
+ quickOn=v
+ setFarmStatus(tr(v and "a_status_on" or "a_status_off"))
+end)
+defMod("afk",function() return afkOn end,function(v) afkOn=v end)
+
+--// =========================================================
+--// UI GRUNDGERUEST
+--// =========================================================
+local vs0=workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280,720)
+local baseScale=math.min(1,(vs0.X-30)/WIN_W,(vs0.Y-30)/WIN_H)
+
+main=new("Frame",{
+ Size=UDim2.fromOffset(WIN_W,WIN_H),AnchorPoint=Vector2.new(0.5,0),
+ Position=UDim2.new(0.5,0,0.5,-WIN_H/2),BackgroundColor3=C.bg,BorderSizePixel=0,Active=true,ClipsDescendants=true},gui)
+round(main,14)
+local mainStroke=stroke(main,C.border,0)
+local uiscale=new("UIScale",{Scale=baseScale*0.8},main)
+local function applyScale() uiscale.Scale=baseScale*(S.uiScale/100) end
+tw(uiscale,{Scale=baseScale*(S.uiScale/100)},0.4,Enum.EasingStyle.Back)
+
+local borderGrad=gradT(mainStroke,"acc","acc2",0)
+task.spawn(function()
+ local r=0
+ while alive do
+  if S.borderAnim then
+   r=(r+1)%360
+   borderGrad.Rotation=r
+  end
+  task.wait(0.03)
+ end
+end)
+
+local top=new("Frame",{Size=UDim2.new(1,0,0,44),BackgroundColor3=C.bg,BorderSizePixel=0,Active=true},main)
+round(top,14)
+local topFill=new("Frame",{Size=UDim2.new(1,0,0,16),Position=UDim2.new(0,0,1,-16),BackgroundColor3=C.bg,BorderSizePixel=0},top)
+local logo=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(18,0),Size=UDim2.fromOffset(140,44),Text="ANTONIO HUB",
+ TextColor3=Color3.new(1,1,1),Font=Enum.Font.GothamBlack,TextSize=16,TextXAlignment=Enum.TextXAlignment.Left},top)
+local lg=gradT(logo,"acc","acc2",0)
+task.spawn(function()
+ local t=0
+ while alive do
+  t=t+0.03
+  lg.Offset=Vector2.new(math.sin(t)*0.35,0)
+  task.wait(0.03)
+ end
+end)
+local pageTitle=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(170,0),Size=UDim2.new(1,-260,1,0),Text="",
+ TextColor3=C.sub,Font=Enum.Font.GothamMedium,TextSize=13,TextXAlignment=Enum.TextXAlignment.Left},top)
+local topLine=new("Frame",{Size=UDim2.new(1,0,0,1),Position=UDim2.new(0,0,1,-1),BackgroundColor3=C.border,BorderSizePixel=0},top)
+gradT(topLine,"acc","acc2",0)
+
+local function topBtn(text,x,hoverKey)
+ local b=new("TextButton",{Size=UDim2.fromOffset(26,26),Position=UDim2.new(1,x,0.5,-13),BackgroundColor3=C.item,Text=text,
+  TextColor3=C.txt,Font=Enum.Font.GothamBold,TextSize=13,AutoButtonColor=false},top)
+ round(b,8)
+ b.MouseEnter:Connect(function() tw(b,{BackgroundColor3=colorOf(hoverKey)}) end)
+ b.MouseLeave:Connect(function() tw(b,{BackgroundColor3=C.item}) end)
+ return b
+end
+local minB=topBtn("-",-66,"hover")
+local closeB=topBtn("X",-34,"bad")
+
+do
+ local dragging,dragStart,startPos
+ top.InputBegan:Connect(function(i)
+  if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+   dragging=true dragStart=i.Position startPos=main.Position
+   i.Changed:Connect(function() if i.UserInputState==Enum.UserInputState.End then dragging=false end end)
+  end
+ end)
+ conn(UIS.InputChanged:Connect(function(i)
+  if dragging and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
+   local d=i.Position-dragStart
+   main.Position=UDim2.new(startPos.X.Scale,startPos.X.Offset+d.X,startPos.Y.Scale,startPos.Y.Offset+d.Y)
+  end
+ end))
+end
+
+local body=new("Frame",{Position=UDim2.fromOffset(0,44),Size=UDim2.new(1,0,1,-44),BackgroundTransparency=1,ClipsDescendants=true},main)
+local side=new("Frame",{Size=UDim2.new(0,150,1,0),BackgroundColor3=C.side,BorderSizePixel=0},body)
+round(side,14)
+new("Frame",{Size=UDim2.new(1,0,0,16),BackgroundColor3=C.side,BorderSizePixel=0},side)
+new("Frame",{Size=UDim2.new(0,16,1,0),Position=UDim2.new(1,-16,0,0),BackgroundColor3=C.side,BorderSizePixel=0},side)
+new("Frame",{Size=UDim2.new(0,1,1,0),Position=UDim2.new(1,-1,0,0),BackgroundColor3=C.border,BorderSizePixel=0},side)
+local content=new("Frame",{Position=UDim2.fromOffset(150,0),Size=UDim2.new(1,-150,1,0),BackgroundTransparency=1,ClipsDescendants=true},body)
+
+local minimized=false
+minB.MouseButton1Click:Connect(function()
+ minimized=not minimized
+ if minimized then body.Visible=false end
+ topFill.Visible=not minimized
+ tw(main,{Size=UDim2.fromOffset(WIN_W,minimized and 44 or WIN_H)},0.25)
+ if not minimized then topFill.Visible=true task.delay(0.12,function() body.Visible=true end) end
+ minB.Text=minimized and "+" or "-"
+end)
+
+--// =========================================================
+--// UI KOMPONENTEN
+--// =========================================================
+local drag=nil
+conn(UIS.InputChanged:Connect(function(i)
+ if drag and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
+  drag(i.Position.X)
+ end
+end))
+conn(UIS.InputEnded:Connect(function(i)
+ if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then drag=nil end
+end))
+
+local function scroller(parent)
+ local s=new("ScrollingFrame",{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=3,
+  ScrollBarImageColor3=C.acc,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y},parent)
+ new("UIPadding",{PaddingTop=UDim.new(0,10),PaddingBottom=UDim.new(0,12),PaddingLeft=UDim.new(0,14),PaddingRight=UDim.new(0,14)},s)
+ new("UIListLayout",{Padding=UDim.new(0,8),SortOrder=Enum.SortOrder.LayoutOrder},s)
+ return s
+end
+
+local function head(parent,key,order)
+ local l=new("TextLabel",{BackgroundTransparency=1,Size=UDim2.new(1,0,0,22),TextColor3=C.sub,Font=Enum.Font.GothamBold,TextSize=11,
+  TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Bottom,LayoutOrder=ord(parent,order)},parent)
+ onLang(function() l.Text=string.upper(tr(key)) end)
+ return l
+end
+
+local function makeButton(parent,text,color,cb,order)
+ local b=new("TextButton",{Size=UDim2.new(1,0,0,38),BackgroundColor3=colorOf(color),TextColor3=Color3.new(1,1,1),Font=Enum.Font.GothamBold,
+  TextSize=12,AutoButtonColor=false,LayoutOrder=ord(parent,order)},parent)
+ reg(b,text)
+ round(b,10)
+ grad(b,Color3.new(1,1,1),Color3.fromRGB(195,195,215),90)
+ local bs=stroke(b,Color3.new(1,1,1),0.85)
+ b.MouseEnter:Connect(function() tw(b,{BackgroundColor3=colorOf(color):Lerp(Color3.new(1,1,1),0.15)}) tw(bs,{Transparency=0.6}) end)
+ b.MouseLeave:Connect(function() tw(b,{BackgroundColor3=colorOf(color)}) tw(bs,{Transparency=0.85}) end)
+ b.MouseButton1Click:Connect(function()
+  tw(b,{BackgroundColor3=colorOf(color):Lerp(Color3.new(1,1,1),0.35)},0.08)
+  task.delay(0.1,function() tw(b,{BackgroundColor3=colorOf(color)},0.2) end)
+  if cb then cb(b) end
+ end)
+ return b
+end
+
+local function makeToggle(parent,title,sub,default,cb,order,mod)
+ local h=sub and 54 or 42
+ local row=new("TextButton",{Size=UDim2.new(1,0,0,h),BackgroundColor3=C.item,Text="",AutoButtonColor=false,LayoutOrder=ord(parent,order)},parent)
+ round(row,10)
+ local rs=stroke(row,C.border,0.3)
+ reg(new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(14,sub and 8 or 0),Size=UDim2.new(1,-80,0,sub and 20 or h),
+  TextColor3=C.txt,Font=Enum.Font.GothamBold,TextSize=13,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},row),title)
+ if sub then
+  reg(new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(14,28),Size=UDim2.new(1,-80,0,16),
+   TextColor3=C.sub,Font=Enum.Font.Gotham,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},row),sub)
+ end
+ local pill=new("Frame",{Size=UDim2.fromOffset(40,22),Position=UDim2.new(1,-54,0.5,-11),BackgroundColor3=C.off,BorderSizePixel=0},row)
+ round(pill,11)
+ local knob=new("Frame",{Size=UDim2.fromOffset(16,16),Position=UDim2.fromOffset(3,3),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0},pill)
+ round(knob,8)
+ local on
+ if mod then on=MOD[mod].get() else on=default and true or false end
+ local function paint(animate)
+  local t=animate and 0.2 or 0
+  tw(pill,{BackgroundColor3=on and C.acc or C.off},t)
+  tw(knob,{Position=on and UDim2.fromOffset(21,3) or UDim2.fromOffset(3,3)},t,Enum.EasingStyle.Back)
+  tw(rs,{Color=on and C.acc or C.border,Transparency=on and 0.1 or 0.3},t)
+ end
+ themed(function() paint(false) end)
+ local function fire(v) if mod then modSet(mod,v) elseif cb then cb(v) end end
+ row.MouseButton1Click:Connect(function() on=not on paint(true) fire(on) end)
+ row.MouseEnter:Connect(function() tw(row,{BackgroundColor3=C.hover}) end)
+ row.MouseLeave:Connect(function() tw(row,{BackgroundColor3=C.item}) end)
+ local obj={row=row}
+ obj.get=function() return on end
+ obj.set=function(v) on=v and true or false paint(true) fire(on) end
+ obj.silent=function(v) on=v and true or false paint(true) end
+ if mod then MOD[mod].views[#MOD[mod].views+1]=obj.silent end
+ return obj
+end
+
+local function makeLabelBox(parent,key,order,height)
+ local f=new("Frame",{Size=UDim2.new(1,0,0,height or 40),BackgroundColor3=C.item,LayoutOrder=ord(parent,order)},parent)
+ round(f,10) stroke(f,C.border,0.3)
+ local l=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(12,0),Size=UDim2.new(1,-24,1,0),Text="",TextColor3=C.sub,
+  Font=Enum.Font.Gotham,TextSize=11,TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Center},f)
+ if key then reg(l,key) end
+ return l
+end
+
+local function makeStepper(parent,title,init,cb,order)
+ local drow=new("Frame",{Size=UDim2.new(1,0,0,42),BackgroundColor3=C.item,LayoutOrder=ord(parent,order)},parent)
+ round(drow,10) stroke(drow,C.border,0.3)
+ reg(new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(14,0),Size=UDim2.new(1,-250,1,0),TextColor3=C.txt,
+  Font=Enum.Font.GothamBold,TextSize=13,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},drow),title)
+ local val=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(1,-190,0,0),Size=UDim2.fromOffset(110,42),Text=init,TextColor3=C.acc2,
+  Font=Enum.Font.GothamBlack,TextSize=12,TextTruncate=Enum.TextTruncate.AtEnd},drow)
+ local function stepBtn(text,x,dir)
+  local b=new("TextButton",{Size=UDim2.fromOffset(26,26),Position=UDim2.new(1,x,0.5,-13),BackgroundColor3=C.hover,Text=text,TextColor3=C.txt,
+   Font=Enum.Font.GothamBold,TextSize=14,AutoButtonColor=false},drow)
+  round(b,8)
+  b.MouseEnter:Connect(function() tw(b,{BackgroundColor3=C.acc}) end)
+  b.MouseLeave:Connect(function() tw(b,{BackgroundColor3=C.hover}) end)
+  b.MouseButton1Click:Connect(function()
+   local t=cb(dir)
+   if t then val.Text=t end
+  end)
+ end
+ stepBtn("-",-216,-1)
+ stepBtn("+",-40,1)
+ return val
+end
+
+local function makeSlider(parent,title,min,max,step,init,cb,order,fmt)
+ fmt=fmt or function(v) return tostring(v) end
+ local f=new("Frame",{Size=UDim2.new(1,0,0,52),BackgroundColor3=C.item,LayoutOrder=ord(parent,order)},parent)
+ round(f,10) stroke(f,C.border,0.3)
+ reg(new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(14,6),Size=UDim2.new(1,-130,0,18),TextColor3=C.txt,
+  Font=Enum.Font.GothamBold,TextSize=13,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},f),title)
+ local vl=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(1,-116,0,6),Size=UDim2.fromOffset(102,18),TextColor3=C.acc2,
+  Font=Enum.Font.GothamBlack,TextSize=12,TextXAlignment=Enum.TextXAlignment.Right},f)
+ local hit=new("TextButton",{BackgroundTransparency=1,Text="",Position=UDim2.fromOffset(0,26),Size=UDim2.new(1,0,0,26),AutoButtonColor=false},f)
+ local track=new("Frame",{Position=UDim2.fromOffset(14,10),Size=UDim2.new(1,-28,0,6),BackgroundColor3=C.off,BorderSizePixel=0},hit)
+ round(track,3)
+ local fill=new("Frame",{Size=UDim2.fromScale(0,1),BackgroundColor3=C.acc,BorderSizePixel=0},track)
+ round(fill,3)
+ local knob=new("Frame",{Size=UDim2.fromOffset(14,14),AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.new(0,0,0.5,0),
+  BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0,ZIndex=2},track)
+ round(knob,7)
+ local val=math.clamp(init,min,max)
+ local function show()
+  local r=(val-min)/(max-min)
+  fill.Size=UDim2.fromScale(r,1)
+  knob.Position=UDim2.new(r,0,0.5,0)
+  vl.Text=fmt(val)
+ end
+ show()
+ local function upd(x)
+  local r=math.clamp((x-track.AbsolutePosition.X)/math.max(track.AbsoluteSize.X,1),0,1)
+  local v=min+math.floor((max-min)*r/step+0.5)*step
+  v=tonumber(string.format("%.4f",math.clamp(v,min,max)))
+  if v~=val then val=v show() cb(val) end
+ end
+ hit.InputBegan:Connect(function(i)
+  if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+   drag=upd
+   upd(i.Position.X)
+  end
+ end)
+ onLang(function() show() end)
+ return {frame=f,get=function() return val end,set=function(v,fire) val=math.clamp(v,min,max) show() if fire then cb(val) end end}
+end
+
+local function makeSegment(parent,title,keys,sel,cb,order)
+ local f=new("Frame",{Size=UDim2.new(1,0,0,66),BackgroundColor3=C.item,LayoutOrder=ord(parent,order)},parent)
+ round(f,10) stroke(f,C.border,0.3)
+ reg(new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(14,6),Size=UDim2.new(1,-28,0,18),TextColor3=C.txt,
+  Font=Enum.Font.GothamBold,TextSize=13,TextXAlignment=Enum.TextXAlignment.Left},f),title)
+ local holder=new("Frame",{BackgroundTransparency=1,Position=UDim2.fromOffset(12,32),Size=UDim2.new(1,-24,0,26)},f)
+ new("UIListLayout",{FillDirection=Enum.FillDirection.Horizontal,Padding=UDim.new(0,6),SortOrder=Enum.SortOrder.LayoutOrder},holder)
+ local btns,curI={}, sel
+ local n=#keys
+ local function paint()
+  for i,b in ipairs(btns) do tw(b,{BackgroundColor3=(i==curI) and C.acc or C.hover},0.15) end
+ end
+ for i,k in ipairs(keys) do
+  local b=new("TextButton",{Size=UDim2.new(1/n,-6*(n-1)/n,1,0),BackgroundColor3=C.hover,TextColor3=Color3.new(1,1,1),
+   Font=Enum.Font.GothamBold,TextSize=11,AutoButtonColor=false,LayoutOrder=i},holder)
+  reg(b,k)
+  round(b,8)
+  btns[i]=b
+  b.MouseButton1Click:Connect(function() curI=i paint() cb(i) end)
+ end
+ themed(paint)
+ return {set=function(i) curI=i paint() end}
+end
+
+local function makeSwatches(parent,title,list,sel,cb,order)
+ local f=new("Frame",{Size=UDim2.new(1,0,0,66),BackgroundColor3=C.item,LayoutOrder=ord(parent,order)},parent)
+ round(f,10) stroke(f,C.border,0.3)
+ reg(new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(14,6),Size=UDim2.new(1,-28,0,18),TextColor3=C.txt,
+  Font=Enum.Font.GothamBold,TextSize=13,TextXAlignment=Enum.TextXAlignment.Left},f),title)
+ local holder=new("Frame",{BackgroundTransparency=1,Position=UDim2.fromOffset(14,32),Size=UDim2.new(1,-28,0,26)},f)
+ new("UIListLayout",{FillDirection=Enum.FillDirection.Horizontal,Padding=UDim.new(0,10),SortOrder=Enum.SortOrder.LayoutOrder},holder)
+ local sts,curI={}, sel
+ local function paint()
+  for i,st in ipairs(sts) do tw(st,{Transparency=(i==curI) and 0 or 1},0.15) end
+ end
+ for i,a in ipairs(list) do
+  local b=new("TextButton",{Size=UDim2.fromOffset(26,26),BackgroundColor3=a.c1,Text="",AutoButtonColor=false,LayoutOrder=i},holder,true)
+  round(b,13)
+  grad(b,a.c1,a.c2,45)
+  local st=stroke(b,Color3.new(1,1,1),1)
+  st.Thickness=2
+  themed(function() st.Color=C.txt end)
+  sts[i]=st
+  b.MouseButton1Click:Connect(function() curI=i paint() cb(i) end)
+ end
+ paint()
+ return {set=function(i) curI=i paint() end}
+end
+
+local function infoCard(parent,titleKey,textKey,order,accent)
+ local f=new("Frame",{Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundColor3=C.item,LayoutOrder=ord(parent,order)},parent)
+ round(f,10)
+ local st=stroke(f,C.border,0.3)
+ new("UIPadding",{PaddingTop=UDim.new(0,10),PaddingBottom=UDim.new(0,10),PaddingLeft=UDim.new(0,14),PaddingRight=UDim.new(0,14)},f)
+ new("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},f)
+ local tl=new("TextLabel",{BackgroundTransparency=1,Size=UDim2.new(1,0,0,18),TextColor3=C.txt,Font=Enum.Font.GothamBold,
+  TextSize=13,TextXAlignment=Enum.TextXAlignment.Left,LayoutOrder=1},f)
+ if titleKey then reg(tl,titleKey) end
+ local l=new("TextLabel",{BackgroundTransparency=1,Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,TextColor3=C.sub,
+  Font=Enum.Font.Gotham,TextSize=12,TextWrapped=true,RichText=true,TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top,LayoutOrder=2},f)
+ if textKey then reg(l,textKey) end
+ if accent then
+  themed(function() st.Color=C[accent] st.Transparency=0.45 tl.TextColor3=C[accent] end)
+ end
+ return l,tl
+end
+
+local function bigCard(parent,titleKey,order)
+ local f=new("Frame",{BackgroundColor3=C.item,LayoutOrder=ord(parent,order)},parent)
+ round(f,10) stroke(f,C.border,0.3)
+ reg(new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(12,8),Size=UDim2.new(1,-24,0,14),TextColor3=C.sub,
+  Font=Enum.Font.GothamMedium,TextSize=10,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},f),titleKey)
+ local v=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(12,24),Size=UDim2.new(1,-24,0,24),Text="-",TextColor3=C.txt,
+  Font=Enum.Font.GothamBlack,TextSize=16,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},f)
+ local s=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(12,50),Size=UDim2.new(1,-24,0,18),Text="",TextColor3=C.sub,
+  Font=Enum.Font.Gotham,TextSize=10,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},f)
+ return v,s
+end
+
+-- kleine Kennzahl-Kachel (Start-Seite)
+local function makeChip(parent,key)
+ local f=new("Frame",{BackgroundColor3=C.item,LayoutOrder=ord(parent)},parent)
+ round(f,10)
+ local st=stroke(f,C.border,0.3)
+ local v=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(0,7),Size=UDim2.new(1,0,0,22),Text="-",TextColor3=C.acc2,
+  Font=Enum.Font.GothamBlack,TextSize=16},f)
+ reg(new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(0,29),Size=UDim2.new(1,0,0,14),TextColor3=C.sub,
+  Font=Enum.Font.GothamMedium,TextSize=10},f),key)
+ local bar=new("Frame",{Size=UDim2.new(0.5,0,0,2),Position=UDim2.new(0.25,0,1,-2),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0},f)
+ round(bar,1)
+ gradT(bar,"acc","acc2",0)
+ return v
+end
+
+local function makeTile(parent,title,mod,order)
+ local b=new("TextButton",{BackgroundColor3=C.item,Text="",AutoButtonColor=false,LayoutOrder=ord(parent,order)},parent)
+ round(b,10)
+ local st=stroke(b,C.border,0.3)
+ local dot=new("Frame",{Size=UDim2.fromOffset(8,8),Position=UDim2.fromOffset(12,14),BackgroundColor3=C.off,BorderSizePixel=0},b)
+ round(dot,4)
+ reg(new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(26,6),Size=UDim2.new(1,-32,0,20),TextColor3=C.txt,
+  Font=Enum.Font.GothamBold,TextSize=12,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},b),title)
+ local state=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(12,30),Size=UDim2.new(1,-20,0,16),TextColor3=C.sub,
+  Font=Enum.Font.GothamMedium,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left},b)
+ local function paint()
+  local v=MOD[mod].get()
+  dot.BackgroundColor3=v and C.good or C.off
+  state.Text=tr(v and "on" or "off")
+  state.TextColor3=v and C.good or C.sub
+  st.Color=v and C.good or C.border
+ end
+ MOD[mod].views[#MOD[mod].views+1]=paint
+ onLang(paint)
+ themed(paint)
+ b.MouseButton1Click:Connect(function() modSet(mod,not MOD[mod].get()) end)
+ b.MouseEnter:Connect(function() tw(b,{BackgroundColor3=C.hover}) end)
+ b.MouseLeave:Connect(function() tw(b,{BackgroundColor3=C.item}) end)
+ return b
+end
+
+--// Toast-Benachrichtigungen
+local toastHolder=new("Frame",{Size=UDim2.fromOffset(300,240),AnchorPoint=Vector2.new(0.5,0),Position=UDim2.new(0.5,0,0,20),BackgroundTransparency=1},gui,true)
+new("UIListLayout",{Padding=UDim.new(0,6),HorizontalAlignment=Enum.HorizontalAlignment.Center,SortOrder=Enum.SortOrder.LayoutOrder},toastHolder,true)
+local notifyLog={}
+local function notify(text,col,silent)
+ col=col or C.acc
+ local f=new("Frame",{Size=UDim2.fromOffset(280,38),BackgroundColor3=C.item,BackgroundTransparency=1},toastHolder,true)
+ round(f,10)
+ local st=new("UIStroke",{Color=col,Thickness=1,Transparency=1,ApplyStrokeMode=Enum.ApplyStrokeMode.Border},f,true)
+ local l=new("TextLabel",{BackgroundTransparency=1,Size=UDim2.fromScale(1,1),Text=text,TextColor3=col,TextTransparency=1,
+  Font=Enum.Font.GothamBold,TextSize=13},f,true)
+ tw(f,{BackgroundTransparency=0.1},0.25) tw(st,{Transparency=0},0.25) tw(l,{TextTransparency=0},0.25)
+ if S.notifySound and not silent then
+  pcall(function()
+   local s=Instance.new("Sound")
+   s.SoundId="rbxasset://sounds/electronicpingshort.wav"
+   s.Volume=1
+   s.Parent=game:GetService("SoundService")
+   s:Play()
+   game:GetService("Debris"):AddItem(s,3)
+  end)
+ end
+ task.delay(S.toastTime,function()
+  if not f.Parent then return end
+  tw(f,{BackgroundTransparency=1},0.3) tw(st,{Transparency=1},0.3) tw(l,{TextTransparency=1},0.3)
+  task.delay(0.35,function() pcall(function() f:Destroy() end) end)
+ end)
+end
+
+-- Teleport zu einem Ei (Eintrag aus lastTargets)
+local function tpTo(e)
+ local c=P.Character
+ local hrp=c and c:FindFirstChild("HumanoidRootPart")
+ if e and hrp then
+  hrp.CFrame=CFrame.new(e.pos+Vector3.new(0,S.tpHeight,0))
+  pcall(function() hrp.AssemblyLinearVelocity=Vector3.zero end)
+  notify(trf("tp_ok",TYPES[e.ti].name),TYPES[e.ti].color,true)
+  return true
+end
+ notify(tr("tp_none"),C.bad,true)
+ return false
+end
+
+-- Eier-Liste (fuer Anzahl- und Teleport-Seite)
+local function buildEggList(parent,onClick)
+ local rows={}
+ for i,ty in ipairs(TYPES) do
+  local row=new("TextButton",{Size=UDim2.new(1,0,0,36),BackgroundColor3=C.item,Text="",AutoButtonColor=false,LayoutOrder=100000-i},parent)
+  round(row,9)
+  local rs=stroke(row,C.border,0.4)
+  local bar=new("Frame",{Size=UDim2.fromOffset(3,18),Position=UDim2.fromOffset(0,9),BackgroundColor3=ty.color,BorderSizePixel=0},row)
+  round(bar,2)
+  local nm=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(14,0),Size=UDim2.new(1,-240,1,0),Text=ty.name,TextColor3=C.txt,
+   Font=Enum.Font.GothamBold,TextSize=12,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},row)
+  new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(1,-224,0,0),Size=UDim2.fromOffset(78,36),Text="Luck "..ty.luck,
+   TextColor3=Color3.fromRGB(150,255,80),Font=Enum.Font.GothamBold,TextSize=11,TextXAlignment=Enum.TextXAlignment.Right},row,true)
+  local dist=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(1,-142,0,0),Size=UDim2.fromOffset(66,36),Text="-",TextColor3=C.sub,
+   Font=Enum.Font.GothamMedium,TextSize=11,TextXAlignment=Enum.TextXAlignment.Right},row)
+  local cnt=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(1,-72,0,0),Size=UDim2.fromOffset(60,36),Text="0",TextColor3=C.acc2,
+   Font=Enum.Font.GothamBlack,TextSize=13,TextXAlignment=Enum.TextXAlignment.Right},row)
+  if onClick then
+   row.MouseEnter:Connect(function() tw(row,{BackgroundColor3=C.hover}) tw(rs,{Color=ty.color,Transparency=0.1}) end)
+   row.MouseLeave:Connect(function() tw(row,{BackgroundColor3=C.item}) tw(rs,{Color=C.border,Transparency=0.4}) end)
+   row.MouseButton1Click:Connect(function() onClick(i) end)
+  end
+  rows[i]={row=row,nm=nm,cnt=cnt,dist=dist}
+ end
+ return rows
+end
+local function updateEggList(rows,query,onlyFound,sortCount)
+ local nd=eggStats()
+ for i,r in ipairs(rows) do
+  local n=allCounts[i] or 0
+  local okQ=(query=="" or string.find(string.lower(TYPES[i].name),query,1,true)~=nil)
+  r.row.Visible=okQ and (not onlyFound or n>0)
+  r.cnt.Text=n>0 and ("×"..n) or "0"
+  r.cnt.TextColor3=n>0 and C.acc2 or C.sub
+  r.nm.TextTransparency=n>0 and 0 or 0.55
+  local d=nd[i]
+  r.dist.Text=(d and d<math.huge) and (math.floor(d).." m") or "-"
+  r.row.LayoutOrder=sortCount and (100000-n*1000-i) or (100000-i)
+ end
+end
+
+--// =========================================================
+--// NAVIGATION  (Einstellungen ganz unten)
+--// =========================================================
+local PAGES={"start","esp","count","teleport","visuals","notifier","player","perf","tools","farm","settings"}
+local pages,navBtns={}, {}
+local NAV_Y0,NAV_STEP,NAV_H,NAV_IND=10,28,25,4
+
+local indicator=new("Frame",{Size=UDim2.fromOffset(3,17),Position=UDim2.fromOffset(0,NAV_Y0+NAV_IND),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0},side)
+round(indicator,2)
+gradT(indicator,"acc","acc2",90)
+
+local function newPage(id)
+ local cg=new("CanvasGroup",{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,Visible=false,GroupTransparency=1},content)
+ pages[id]=cg
+ return cg
+end
+
+local function showPage(id)
+ if cur==id then return end
+ local oldId=cur
+ cur=id
+ for i,n in ipairs(PAGES) do
+  local sel=(n==id)
+  local b=navBtns[n]
+  tw(b,{BackgroundTransparency=sel and 0 or 1,TextColor3=sel and C.txt or C.sub})
+  if sel then tw(indicator,{Position=UDim2.fromOffset(0,NAV_Y0+(i-1)*NAV_STEP+NAV_IND)},0.3,Enum.EasingStyle.Back) end
+ end
+ pageTitle.Text=tr("nav_"..id)
+ if oldId then
+  local oc=pages[oldId]
+  tw(oc,{GroupTransparency=1},0.12)
+  task.delay(0.13,function() if cur~=oldId then oc.Visible=false end end)
+ end
+ local np=pages[id]
+ np.Position=UDim2.fromOffset(0,16)
+ np.GroupTransparency=1
+ np.Visible=true
+ tw(np,{GroupTransparency=0,Position=UDim2.fromOffset(0,0)},0.3)
+ if id=="count" then pcall(updateCount) elseif id=="teleport" then pcall(updateTeleport) end
+end
+
+for i,n in ipairs(PAGES) do
+ local b=new("TextButton",{Size=UDim2.new(1,-20,0,NAV_H),Position=UDim2.fromOffset(10,NAV_Y0+(i-1)*NAV_STEP),BackgroundColor3=C.item,BackgroundTransparency=1,
+  TextColor3=C.sub,Font=Enum.Font.GothamBold,TextSize=12,TextXAlignment=Enum.TextXAlignment.Left,AutoButtonColor=false},side)
+ reg(b,"nav_"..n)
+ round(b,9)
+ new("UIPadding",{PaddingLeft=UDim.new(0,14)},b)
+ navBtns[n]=b
+ b.MouseEnter:Connect(function() if cur~=n then tw(b,{BackgroundTransparency=0.6,TextColor3=C.txt}) end end)
+ b.MouseLeave:Connect(function() if cur~=n then tw(b,{BackgroundTransparency=1,TextColor3=C.sub}) end end)
+ b.MouseButton1Click:Connect(function() showPage(n) end)
+end
+themed(function()
+ for id,b in pairs(navBtns) do
+  local sel=(id==cur)
+  b.BackgroundTransparency=sel and 0 or 1
+  b.TextColor3=sel and C.txt or C.sub
+ end
+end)
+onLang(function() if cur then pageTitle.Text=tr("nav_"..cur) end end)
+
+local hintLabel=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,14,1,-40),Size=UDim2.new(1,-28,0,30),
+ TextColor3=C.sub,Font=Enum.Font.Gotham,TextSize=10,TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Left},side)
+local function refreshHint() hintLabel.Text=P.DisplayName.."\n"..trf("key_hint",S.menuKey) end
+onLang(refreshHint)
+
+--// =========================================================
+--// SEITEN
+--// =========================================================
+
+--// ---------------- START ----------------
+local updateStart
+do
+ local sp=scroller(newPage("start"))
+
+ -- Hero
+ local wc=new("Frame",{Size=UDim2.new(1,0,0,92),BackgroundColor3=C.item,LayoutOrder=ord(sp),ClipsDescendants=true},sp)
+ round(wc,12)
+ local wst=stroke(wc,C.acc,0.5)
+ local wg=new("UIGradient",{Rotation=15},wc,true)
+ themed(function()
+  wst.Color=C.acc
+  wg.Color=ColorSequence.new(C.acc:Lerp(C.item,0.55),C.item)
+ end)
+ local accBar=new("Frame",{Size=UDim2.fromOffset(4,62),Position=UDim2.fromOffset(0,15),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0},wc)
+ round(accBar,2)
+ gradT(accBar,"acc","acc2",90)
+ local wTitle=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(18,10),Size=UDim2.new(1,-170,0,30),
+  TextColor3=C.txt,Font=Enum.Font.GothamBlack,TextSize=21,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},wc)
+ onLang(function() wTitle.Text=trf("welcome",P.DisplayName) end)
+ reg(new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(18,42),Size=UDim2.new(1,-36,0,18),
+  TextColor3=C.sub,Font=Enum.Font.Gotham,TextSize=12,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},wc),"hero_sub")
+ local wInfo=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(18,64),Size=UDim2.new(1,-36,0,18),
+  TextColor3=C.acc2,Font=Enum.Font.GothamBold,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},wc)
+ local pill=new("Frame",{Size=UDim2.fromOffset(124,22),Position=UDim2.new(1,-138,0,12),BackgroundColor3=C.hover,BorderSizePixel=0},wc)
+ round(pill,11)
+ local liveDot=new("Frame",{Size=UDim2.fromOffset(8,8),Position=UDim2.fromOffset(10,7),BackgroundColor3=C.good,BorderSizePixel=0},pill)
+ round(liveDot,4)
+ local wSession=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(24,0),Size=UDim2.new(1,-30,1,0),
+  TextColor3=C.txt,Font=Enum.Font.GothamBold,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left},pill)
+ task.spawn(function()
+  local t=0
+  while alive do
+   t=t+0.05
+   wg.Offset=Vector2.new(math.sin(t*0.6)*0.25,0)
+   liveDot.BackgroundTransparency=0.55*(0.5+0.5*math.sin(t*3))
+   task.wait(0.05)
+  end
+ end)
+
+ -- Kennzahlen
+ local chipGrid=new("Frame",{Size=UDim2.new(1,0,0,50),BackgroundTransparency=1,LayoutOrder=ord(sp)},sp)
+ new("UIGridLayout",{CellSize=UDim2.new(0.25,-7,0,50),CellPadding=UDim2.fromOffset(9,9),SortOrder=Enum.SortOrder.LayoutOrder},chipGrid)
+ local chFps=makeChip(chipGrid,"chip_fps")
+ local chPing=makeChip(chipGrid,"chip_ping")
+ local chPl=makeChip(chipGrid,"chip_players")
+ local chMk=makeChip(chipGrid,"chip_marked")
+
+ head(sp,"st_server")
+ local cgrid=new("Frame",{Size=UDim2.new(1,0,0,76),BackgroundTransparency=1,LayoutOrder=ord(sp)},sp)
+ new("UIGridLayout",{CellSize=UDim2.new(1/3,-6,0,76),CellPadding=UDim2.fromOffset(9,9),SortOrder=Enum.SortOrder.LayoutOrder},cgrid)
+ local vRare,sRare=bigCard(cgrid,"c_rare")
+ local vNear,sNear=bigCard(cgrid,"c_near")
+ local vTot,sTot=bigCard(cgrid,"c_total")
+
+ head(sp,"st_quick")
+ local qgrid=new("Frame",{Size=UDim2.new(1,0,0,38),BackgroundTransparency=1,LayoutOrder=ord(sp)},sp)
+ new("UIGridLayout",{CellSize=UDim2.new(1/3,-6,0,38),CellPadding=UDim2.fromOffset(9,9),SortOrder=Enum.SortOrder.LayoutOrder},qgrid)
+ makeButton(qgrid,"tp_egg","acc",function()
+  local e=nearestEgg(true)
+  if not e then e=nearestEgg(false) end
+  tpTo(e)
+ end,1)
+ makeButton(qgrid,"rescan",Color3.fromRGB(90,60,200),function() fullScan(true) end,2)
+ makeButton(qgrid,"hop",Color3.fromRGB(40,100,170),serverHop,3)
+
+ -- Top-Funde (mit Balken)
+ head(sp,"st_found")
+ local topBox=new("Frame",{Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundColor3=C.item,LayoutOrder=ord(sp)},sp)
+ round(topBox,10) stroke(topBox,C.border,0.3)
+ new("UIPadding",{PaddingTop=UDim.new(0,10),PaddingBottom=UDim.new(0,10),PaddingLeft=UDim.new(0,14),PaddingRight=UDim.new(0,14)},topBox)
+ new("UIListLayout",{Padding=UDim.new(0,7),SortOrder=Enum.SortOrder.LayoutOrder},topBox)
+ local foundNone=new("TextLabel",{BackgroundTransparency=1,Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,TextColor3=C.sub,
+  Font=Enum.Font.Gotham,TextSize=12,TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Left,LayoutOrder=0},topBox)
+ reg(foundNone,"found_none")
+ local topRows={}
+ for k=1,5 do
+  local rf=new("Frame",{Size=UDim2.new(1,0,0,29),BackgroundTransparency=1,LayoutOrder=k,Visible=false},topBox)
+  local nm=new("TextLabel",{BackgroundTransparency=1,Size=UDim2.new(1,-170,0,22),TextColor3=C.txt,Font=Enum.Font.GothamBold,TextSize=12,
+   TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},rf)
+  local lk=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(1,-170,0,0),Size=UDim2.fromOffset(110,22),TextColor3=C.sub,Font=Enum.Font.Gotham,
+   TextSize=11,TextXAlignment=Enum.TextXAlignment.Right},rf)
+  local ct=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(1,-50,0,0),Size=UDim2.fromOffset(50,22),TextColor3=C.acc2,Font=Enum.Font.GothamBlack,
+   TextSize=12,TextXAlignment=Enum.TextXAlignment.Right},rf)
+  local track=new("Frame",{Position=UDim2.fromOffset(0,24),Size=UDim2.new(1,0,0,3),BackgroundColor3=C.off,BorderSizePixel=0},rf)
+  round(track,2)
+  local fill=new("Frame",{Size=UDim2.fromScale(0,1),BackgroundColor3=C.acc,BorderSizePixel=0},track,true)
+  round(fill,2)
+  topRows[k]={f=rf,nm=nm,lk=lk,ct=ct,fill=fill}
+ end
+
+ head(sp,"st_mods")
+ local tgrid=new("Frame",{Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1,LayoutOrder=ord(sp)},sp)
+ new("UIGridLayout",{CellSize=UDim2.new(0.25,-7,0,52),CellPadding=UDim2.fromOffset(9,9),SortOrder=Enum.SortOrder.LayoutOrder},tgrid)
+ makeTile(tgrid,"m_esp","esp")
+ makeTile(tgrid,"m_notify","notify")
+ makeTile(tgrid,"m_quick","quick")
+ makeTile(tgrid,"m_afk","afk")
+
+ local tipHead=head(sp,"st_tip")
+ local tipN=math.random(1,6)
+ local tipText=infoCard(sp,"tip_title","tip"..tipN,nil,"acc2")
+ local tipCard=tipText.Parent
+ applyTips=function()
+  tipHead.Visible=S.showTips
+  tipCard.Visible=S.showTips
+ end
+ applyTips()
+
+ local fpsNow=0
+ do
+  local frames,lastT=0,tick()
+  conn(RS.Heartbeat:Connect(function()
+   frames=frames+1
+   local now=tick()
+   if now-lastT>=0.5 then
+    fpsNow=math.floor(frames/(now-lastT))
+    env.__ANTONIO_FPS=fpsNow
+    frames=0 lastT=now
+   end
+  end))
+ end
+ local function pingText()
+  local ping="-"
+  pcall(function() ping=math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue()).." ms" end)
+  return ping
+ end
+ local function short(i) return (TYPES[i].name:gsub(" Egg","")) end
+
+ updateStart=function()
+  local s=math.floor(tick()-(env.__ANTONIO_T0 or tick()))
+  local ts
+  if s>=3600 then ts=string.format("%d:%02d:%02d",math.floor(s/3600),math.floor(s/60)%60,s%60)
+  else ts=string.format("%02d:%02d",math.floor(s/60),s%60) end
+  wSession.Text=trf("session",ts)
+  chFps.Text=tostring(fpsNow)
+  chFps.TextColor3=(fpsNow>=50 and C.good) or (fpsNow>=30 and C.acc2) or C.bad
+  chPing.Text=pingText()
+  chPl.Text=#Players:GetPlayers().."/"..Players.MaxPlayers
+  chMk.Text=tostring(markCount())
+
+  local c=P.Character
+  local hrp=c and c:FindFirstChild("HumanoidRootPart")
+  local total,types=0,0
+  local rareI
+  for i,n in pairs(allCounts) do
+   if n>0 then
+    total=total+n types=types+1
+    if not rareI or i>rareI then rareI=i end
+   end
+  end
+  wInfo.Text=trf("hero_info",total,types)
+  -- seltenstes Ei
+  if rareI then
+   local rd
+   if hrp then
+    for _,e in pairs(lastTargets) do
+     if e.ti==rareI then
+      local d=(e.pos-hrp.Position).Magnitude
+      if not rd or d<rd then rd=d end
+     end
+    end
+   end
+   vRare.Text=short(rareI)
+   vRare.TextColor3=TYPES[rareI].color
+   if rd then sRare.Text=trf("rare_sub",TYPES[rareI].luck,allCounts[rareI],math.floor(rd))
+   else sRare.Text=trf("rare_nopos",TYPES[rareI].luck,allCounts[rareI]) end
+  else
+   vRare.Text="-" vRare.TextColor3=C.txt sRare.Text=""
+  end
+  -- naechstes aktives Ei
+  local ne,nd=nearestEgg(true)
+  if ne then
+   vNear.Text=short(ne.ti)
+   vNear.TextColor3=TYPES[ne.ti].color
+   sNear.Text=trf("near_sub",math.floor(nd))
+  else
+   vNear.Text="-" vNear.TextColor3=C.txt sNear.Text=tr("near_none")
+  end
+  -- gesamt
+  vTot.Text=trf("total_val",total)
+  sTot.Text=trf("total_sub",markCount(),types)
+  -- Top-Funde
+  local idx={}
+  for i,n in pairs(allCounts) do if n>0 then idx[#idx+1]=i end end
+  table.sort(idx,function(a,b) return a>b end)
+  foundNone.Visible=(#idx==0)
+  local maxN=1
+  for k=1,math.min(5,#idx) do maxN=math.max(maxN,allCounts[idx[k]]) end
+  for k=1,5 do
+   local r=topRows[k]
+   local i=idx[k]
+   if i then
+    local ty=TYPES[i]
+    local n=allCounts[i]
+    r.f.Visible=true
+    r.nm.Text=ty.name
+    r.nm.TextColor3=ty.color
+    r.lk.Text="Luck "..ty.luck
+    r.ct.Text="×"..n
+    r.fill.BackgroundColor3=ty.color
+    r.fill.Size=UDim2.fromScale(n/maxN,1)
+   else
+    r.f.Visible=false
+   end
+  end
+ end
+ task.spawn(function()
+  while alive do
+   if cur=="start" then pcall(updateStart) end
+   task.wait(0.5)
+  end
+ end)
+end
+
+--// ---------------- ESP ----------------
+do
+ local espPage=newPage("esp")
+ local etop=new("Frame",{Size=UDim2.new(1,-28,0,136),Position=UDim2.fromOffset(14,12),BackgroundTransparency=1},espPage)
+ local search=new("TextBox",{Size=UDim2.new(1,0,0,34),BackgroundColor3=C.item,Text="",PlaceholderColor3=C.sub,
+  TextColor3=C.txt,Font=Enum.Font.GothamMedium,TextSize=13,ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left},etop)
+ reg(search,"esp_search","PlaceholderText")
+ round(search,10)
+ local searchStroke=stroke(search,C.border,0.3)
+ new("UIPadding",{PaddingLeft=UDim.new(0,12)},search)
+ search.Focused:Connect(function() tw(searchStroke,{Color=C.acc,Transparency=0}) end)
+ search.FocusLost:Connect(function() tw(searchStroke,{Color=C.border,Transparency=0.3}) end)
+
+ local ebtns=new("Frame",{Size=UDim2.new(1,0,0,34),Position=UDim2.fromOffset(0,44),BackgroundTransparency=1},etop)
+ new("UIGridLayout",{CellSize=UDim2.new(1/3,-6,1,0),CellPadding=UDim2.fromOffset(8,0),SortOrder=Enum.SortOrder.LayoutOrder},ebtns)
+
+ local espBtn=makeButton(ebtns,"esp_btn_on","acc",function() modSet("esp",not S.espOn) end,1)
+ makeButton(ebtns,"rescan",Color3.fromRGB(90,60,200),function() fullScan(true) end,2)
+ local tracerBtn=makeButton(ebtns,"tracer_on",Color3.fromRGB(40,100,170),function()
+  if not Drawing then return end
+  S.tracers=not S.tracers
+  save()
+ end,3)
+ local function refreshBtns()
+  espBtn.Text=tr(S.espOn and "esp_btn_on" or "esp_btn_off")
+  if not Drawing then tracerBtn.Text=tr("tracer_na") else tracerBtn.Text=tr(S.tracers and "tracer_on" or "tracer_off") end
+ end
+ MOD.esp.views[#MOD.esp.views+1]=refreshBtns
+ tracerBtn.MouseButton1Click:Connect(refreshBtns)
+ onLang(refreshBtns)
+
+ local distS=makeSlider(etop,"esp_dist",0,20000,250,S.maxDist,function(v) S.maxDist=v save() end,nil,function(v)
+  if v<=0 then return tr("s_inf") end
+  return v.." m"
+ end)
+ distS.frame.Position=UDim2.fromOffset(0,84)
+
+ local elist=new("ScrollingFrame",{Size=UDim2.new(1,-28,1,-196),Position=UDim2.fromOffset(14,154),BackgroundTransparency=1,BorderSizePixel=0,
+  ScrollBarThickness=3,ScrollBarImageColor3=C.acc,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y},espPage)
+ new("UIListLayout",{Padding=UDim.new(0,6),SortOrder=Enum.SortOrder.LayoutOrder},elist)
+ new("UIPadding",{PaddingRight=UDim.new(0,6)},elist)
+
+ for i,ty in ipairs(TYPES) do
+  local row=new("TextButton",{Size=UDim2.new(1,0,0,36),BackgroundColor3=C.item,Text="",AutoButtonColor=false,LayoutOrder=i},elist)
+  round(row,9)
+  local rs=stroke(row,C.border,0.4)
+  local bar=new("Frame",{Size=UDim2.fromOffset(3,18),Position=UDim2.fromOffset(0,9),BackgroundColor3=ty.color,BorderSizePixel=0},row)
+  round(bar,2)
+  new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(14,0),Size=UDim2.new(1,-210,1,0),Text=ty.name,TextColor3=C.txt,
+   Font=Enum.Font.GothamBold,TextSize=12,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},row)
+  local cnt=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(1,-196,0,0),Size=UDim2.fromOffset(50,36),Text="",TextColor3=C.acc2,
+   Font=Enum.Font.GothamBlack,TextSize=11,TextXAlignment=Enum.TextXAlignment.Right},row)
+  new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(1,-140,0,0),Size=UDim2.fromOffset(84,36),Text="Luck "..ty.luck,
+   TextColor3=Color3.fromRGB(150,255,80),Font=Enum.Font.GothamBold,TextSize=11,TextXAlignment=Enum.TextXAlignment.Right},row,true)
+  local pill=new("Frame",{Size=UDim2.fromOffset(36,18),Position=UDim2.new(1,-46,0.5,-9),BorderSizePixel=0,BackgroundColor3=C.off},row)
+  round(pill,9)
+  local knob=new("Frame",{Size=UDim2.fromOffset(14,14),Position=UDim2.fromOffset(2,2),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0},pill)
+  round(knob,7)
+  local function paint(animate)
+   local t=animate and 0.2 or 0
+   tw(pill,{BackgroundColor3=ty.on and ty.color or C.off},t)
+   tw(knob,{Position=ty.on and UDim2.fromOffset(20,2) or UDim2.fromOffset(2,2)},t,Enum.EasingStyle.Back)
+   tw(rs,{Color=ty.on and ty.color or C.border,Transparency=0.4},t)
+  end
+  themed(function() paint(false) end)
+  row.MouseButton1Click:Connect(function()
+   ty.on=not ty.on
+   S.eggs[ty.text]=ty.on or nil
+   save()
+   paint(true)
+   pcall(updateTargets)
+  end)
+  row.MouseEnter:Connect(function() tw(row,{BackgroundColor3=C.hover}) end)
+  row.MouseLeave:Connect(function() tw(row,{BackgroundColor3=C.item}) end)
+  eggRows[i]={row=row,paint=paint,cnt=cnt}
+ end
+
+ conn(search:GetPropertyChangedSignal("Text"):Connect(function()
+  local q=string.lower(search.Text)
+  for i,r in ipairs(eggRows) do
+   r.row.Visible=(q=="" or string.find(string.lower(TYPES[i].name),q,1,true)~=nil)
+  end
+ end))
+
+ local espStatus=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,14,1,-38),Size=UDim2.new(1,-28,0,32),Text="",
+  TextColor3=C.sub,Font=Enum.Font.Gotham,TextSize=11,TextWrapped=true,TextTruncate=Enum.TextTruncate.AtEnd,
+  TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top},espPage)
+ reg(espStatus,"ready")
+ setEspStatus=function(t) espStatus.Text=t end
+end
+
+--// ---------------- ANZAHL (wie viele Eier jeder Sorte im Server sind) ----------------
+do
+ local cp=scroller(newPage("count"))
+ head(cp,"c_head")
+ local sum=makeLabelBox(cp,nil,nil,30)
+ makeToggle(cp,"c_only","c_only_sub",S.countOnlyFound,function(v) S.countOnlyFound=v save() end)
+ makeSegment(cp,"c_sort",{"sort_luck","sort_count"},S.countSort,function(i) S.countSort=i save() end)
+ local empty=makeLabelBox(cp,"c_empty",nil,30)
+ local rows=buildEggList(cp,nil)
+ updateCount=function()
+  local total,types=0,0
+  for _,n in pairs(allCounts) do
+   if n>0 then total=total+n types=types+1 end
+  end
+  sum.Text=trf("c_sum",total,types,markCount())
+  empty.Parent.Visible=(total==0)
+  updateEggList(rows,"",S.countOnlyFound,S.countSort==2)
+ end
+end
+
+--// ---------------- TELEPORT (zu einem gewaehlten Ei) ----------------
+do
+ local tpg=newPage("teleport")
+ local search=new("TextBox",{Size=UDim2.new(1,-28,0,34),Position=UDim2.fromOffset(14,12),BackgroundColor3=C.item,Text="",PlaceholderColor3=C.sub,
+  TextColor3=C.txt,Font=Enum.Font.GothamMedium,TextSize=13,ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left},tpg)
+ reg(search,"esp_search","PlaceholderText")
+ round(search,10)
+ local ss=stroke(search,C.border,0.3)
+ new("UIPadding",{PaddingLeft=UDim.new(0,12)},search)
+ search.Focused:Connect(function() tw(ss,{Color=C.acc,Transparency=0}) end)
+ search.FocusLost:Connect(function() tw(ss,{Color=C.border,Transparency=0.3}) end)
+
+ local btns=new("Frame",{Size=UDim2.new(1,-28,0,34),Position=UDim2.fromOffset(14,54),BackgroundTransparency=1},tpg)
+ new("UIGridLayout",{CellSize=UDim2.new(0.5,-4,1,0),CellPadding=UDim2.fromOffset(8,0),SortOrder=Enum.SortOrder.LayoutOrder},btns)
+
+ local status=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,14,1,-38),Size=UDim2.new(1,-28,0,32),Text="",
+  TextColor3=C.sub,Font=Enum.Font.Gotham,TextSize=11,TextWrapped=true,TextTruncate=Enum.TextTruncate.AtEnd,
+  TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top},tpg)
+ reg(status,"tp_status")
+
+ makeButton(btns,"tp_egg","acc",function()
+  local e=nearestEgg(true)
+  if not e then e=nearestEgg(false) end
+  if tpTo(e) then status.Text=trf("tp_ok",TYPES[e.ti].name) end
+ end,1)
+ makeButton(btns,"tp_rare",Color3.fromRGB(90,60,200),function()
+  local e=rarestEgg()
+  if tpTo(e) then status.Text=trf("tp_ok",TYPES[e.ti].name) end
+ end,2)
+
+ local list=new("ScrollingFrame",{Size=UDim2.new(1,-28,1,-146),Position=UDim2.fromOffset(14,98),BackgroundTransparency=1,BorderSizePixel=0,
+  ScrollBarThickness=3,ScrollBarImageColor3=C.acc,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y},tpg)
+ new("UIListLayout",{Padding=UDim.new(0,6),SortOrder=Enum.SortOrder.LayoutOrder},list)
+ new("UIPadding",{PaddingRight=UDim.new(0,6)},list)
+
+ local rows=buildEggList(list,function(i)
+  local _,ne=eggStats()
+  local e=ne[i]
+  if e then
+   if tpTo(e) then status.Text=trf("tp_ok",TYPES[i].name) end
+  else
+   local msg=trf("tp_none_type",TYPES[i].name)
+   status.Text=msg
+   notify(msg,C.bad,true)
+  end
+ end)
+ updateTeleport=function()
+  updateEggList(rows,string.lower(search.Text),false,false)
+ end
+end
+
+task.spawn(function()
+ while alive do
+  if cur=="count" then pcall(updateCount) elseif cur=="teleport" then pcall(updateTeleport) end
+  task.wait(0.5)
+ end
+end)
+
+--// ---------------- VISUALS ----------------
+local V={fb=false,fbBright=2,fog=false,time=false,clock=14,col=false,sat=0.5,fov=false,fovVal=90,zoom=false,zoomFov=25}
+do
+ local vp=scroller(newPage("visuals"))
+ local fbOrig,fogOrig,atmo,timeOrig,origFov,ccE
+ local zooming,zbase=false,nil
+
+ head(vp,"v_light")
+ makeToggle(vp,"fullbright","fb_sub",false,function(v)
+  if v then
+   fbOrig={Brightness=Lighting.Brightness,Ambient=Lighting.Ambient,OutdoorAmbient=Lighting.OutdoorAmbient}
+  elseif fbOrig then
+   pcall(function()
+    Lighting.Brightness=fbOrig.Brightness
+    Lighting.Ambient=fbOrig.Ambient
+    Lighting.OutdoorAmbient=fbOrig.OutdoorAmbient
+   end)
+  end
+  V.fb=v
+ end)
+ makeSlider(vp,"fb_bright",1,5,0.5,V.fbBright,function(v) V.fbBright=v end,nil,function(v) return tostring(v) end)
+ makeToggle(vp,"nofog","nofog_sub",false,function(v)
+  if v then
+   fogOrig={FogEnd=Lighting.FogEnd,FogStart=Lighting.FogStart}
+   atmo={}
+   for _,a in ipairs(Lighting:GetChildren()) do
+    if a:IsA("Atmosphere") then atmo[#atmo+1]={obj=a,density=a.Density,haze=a.Haze} end
+   end
+  else
+   if fogOrig then pcall(function() Lighting.FogEnd=fogOrig.FogEnd Lighting.FogStart=fogOrig.FogStart end) end
+   if atmo then for _,a in ipairs(atmo) do pcall(function() a.obj.Density=a.density a.obj.Haze=a.haze end) end end
+  end
+  V.fog=v
+ end)
+ makeToggle(vp,"timefix","timefix_sub",false,function(v)
+  if v then timeOrig=Lighting.ClockTime
+  elseif timeOrig then pcall(function() Lighting.ClockTime=timeOrig end) end
+  V.time=v
+ end)
+ makeSlider(vp,"clock",0,24,0.5,V.clock,function(v) V.clock=v end,nil,function(v)
+  local h=math.floor(v)
+  local m=(v-h)>=0.5 and "30" or "00"
+  return string.format("%02d:%s",h%24,m)
+ end)
+
+ head(vp,"v_color")
+ local colSlider
+ makeToggle(vp,"colboost","colboost_sub",false,function(v)
+  V.col=v
+  if v then
+   pcall(function()
+    ccE=Instance.new("ColorCorrectionEffect")
+    ccE.Name="AntonioCC"
+    ccE.Saturation=V.sat
+    ccE.Contrast=0.1
+    ccE.Parent=Lighting
+   end)
+  else
+   if ccE then pcall(function() ccE:Destroy() end) ccE=nil end
+  end
+ end)
+ colSlider=makeSlider(vp,"sat",-1,2,0.1,V.sat,function(v)
+  V.sat=v
+  if ccE then pcall(function() ccE.Saturation=v end) end
+ end)
+
+ head(vp,"v_cam")
+ makeToggle(vp,"fov_on","fov_sub",false,function(v)
+  local cam=workspace.CurrentCamera
+  if v then origFov=cam and cam.FieldOfView or 70
+  elseif cam and origFov then cam.FieldOfView=origFov end
+  V.fov=v
+ end)
+ makeSlider(vp,"fov_val",40,120,5,V.fovVal,function(v) V.fovVal=v end)
+ makeToggle(vp,"zoom","zoom_sub",false,function(v) V.zoom=v end)
+ makeSlider(vp,"zoom_fov",10,60,5,V.zoomFov,function(v) V.zoomFov=v end)
+
+ conn(RS.Heartbeat:Connect(function()
+  if V.fb then
+   Lighting.Brightness=V.fbBright
+   Lighting.Ambient=Color3.new(1,1,1)
+   Lighting.OutdoorAmbient=Color3.new(1,1,1)
+  end
+  if V.time then Lighting.ClockTime=V.clock end
+  if V.fog then
+   Lighting.FogEnd=1e9
+   if atmo then for _,a in ipairs(atmo) do pcall(function() a.obj.Density=0 a.obj.Haze=0 end) end end
+  end
+ end))
+ conn(RS.RenderStepped:Connect(function()
+  local cam=workspace.CurrentCamera
+  if not cam then return end
+  local zk=V.zoom and UIS:IsKeyDown(Enum.KeyCode.C) and not UIS:GetFocusedTextBox()
+  if zk then
+   if not zooming then zooming=true zbase=cam.FieldOfView end
+   cam.FieldOfView=V.zoomFov
+  else
+   if zooming then
+    zooming=false
+    if not V.fov and zbase then cam.FieldOfView=zbase end
+   end
+   if V.fov then cam.FieldOfView=V.fovVal end
+  end
+ end))
+
+ restorers[#restorers+1]=function()
+  V.fb=false V.fog=false V.time=false V.fov=false V.zoom=false V.col=false
+  if fbOrig then pcall(function()
+   Lighting.Brightness=fbOrig.Brightness Lighting.Ambient=fbOrig.Ambient Lighting.OutdoorAmbient=fbOrig.OutdoorAmbient
+  end) end
+  if timeOrig then pcall(function() Lighting.ClockTime=timeOrig end) end
+  if fogOrig then pcall(function() Lighting.FogEnd=fogOrig.FogEnd Lighting.FogStart=fogOrig.FogStart end) end
+  if atmo then for _,a in ipairs(atmo) do pcall(function() a.obj.Density=a.density a.obj.Haze=a.haze end) end end
+  if ccE then pcall(function() ccE:Destroy() end) end
+  local cam=workspace.CurrentCamera
+  if cam then
+   if zooming and zbase then pcall(function() cam.FieldOfView=zbase end)
+   elseif origFov then pcall(function() cam.FieldOfView=origFov end) end
+  end
+ end
+end
+
+--// ---------------- NOTIFIER ----------------
+do
+ local np=scroller(newPage("notifier"))
+ local logL
+
+ local function pushLog(text,ti)
+  table.insert(notifyLog,1,{os.date("%H:%M"),text,ti})
+  while #notifyLog>6 do table.remove(notifyLog) end
+  if logL then
+   local lines={}
+   local subHex=C.sub:ToHex()
+   for _,e in ipairs(notifyLog) do
+    lines[#lines+1]=string.format('<font color="#%s">%s</font>  <font color="#%s">%s</font>',subHex,e[1],TYPES[e[3]].color:ToHex(),e[2])
+   end
+   logL.Text=table.concat(lines,"\n")
+  end
+ end
+
+ head(np,"n_head")
+ makeToggle(np,"n_on","n_on_sub",false,nil,nil,"notify")
+ local minLbl
+ local function minText() return (TYPES[S.notifyMin].name:gsub(" Egg","")) end
+ minLbl=makeStepper(np,"n_min",minText(),function(dir)
+  S.notifyMin=math.clamp(S.notifyMin+dir,1,#TYPES)
+  minLbl.TextColor3=TYPES[S.notifyMin].color
+  save()
+  return minText()
+ end)
+ minLbl.TextColor3=TYPES[S.notifyMin].color
+ makeToggle(np,"n_sound","n_sound_sub",S.notifySound,function(v) S.notifySound=v save() end)
+ makeButton(np,"n_test",Color3.fromRGB(90,60,200),function()
+  notify(trf("n_test_msg",TYPES[S.notifyMin].name),TYPES[S.notifyMin].color)
+ end)
+ makeLabelBox(np,"n_info",nil,44)
+
+ head(np,"n_log")
+ logL=infoCard(np,"n_log_title","n_log_none")
+
+ task.spawn(function()
+  while alive do
+   if notifyOn then
+    for k,e in pairs(lastTargets) do
+     local ti=e.ti
+     if not notified[k] and ti>=S.notifyMin then
+      notified[k]=true
+      local txt=trf("n_found",TYPES[ti].name,TYPES[ti].luck)
+      notify(txt,TYPES[ti].color)
+      pushLog(TYPES[ti].name.." (Luck "..TYPES[ti].luck..")",ti)
+     end
+    end
+    for k in pairs(notified) do
+     if not lastTargets[k] then notified[k]=nil end
+    end
+   end
+   task.wait(1)
+  end
+ end)
+end
+
+--// ---------------- SPIELER ----------------
+do
+ local pp=scroller(newPage("player"))
+ local PL={speed=false,speedVal=32,jump=false,jumpVal=100,inf=false,noclip=false,fly=false,flySpeed=60}
+ local origSpeed,origJump,origUseJP
+ local ncOrig={}
+
+ local function hum()
+  local c=P.Character
+  return c and c:FindFirstChildOfClass("Humanoid")
+ end
+
+ head(pp,"p_move")
+ makeToggle(pp,"speed","speed_sub",false,function(v)
+  local h=hum()
+  if v then origSpeed=h and h.WalkSpeed or 16
+  elseif h then h.WalkSpeed=origSpeed or 16 end
+  PL.speed=v
+ end)
+ makeSlider(pp,"speed_val",16,200,2,PL.speedVal,function(v) PL.speedVal=v end)
+ makeToggle(pp,"jump","jump_sub",false,function(v)
+  local h=hum()
+  if v then
+   if h then origJump=h.JumpPower origUseJP=h.UseJumpPower end
+  elseif h then
+   pcall(function() h.JumpPower=origJump or 50 h.UseJumpPower=(origUseJP==nil) and true or origUseJP end)
+  end
+  PL.jump=v
+ end)
+ makeSlider(pp,"jump_val",50,300,10,PL.jumpVal,function(v) PL.jumpVal=v end)
+ makeToggle(pp,"infjump","infjump_sub",false,function(v) PL.inf=v end)
+ makeToggle(pp,"noclip","noclip_sub",false,function(v)
+  PL.noclip=v
+  if not v then for p in pairs(ncOrig) do pcall(function() p.CanCollide=true end) ncOrig[p]=nil end end
+ end)
+ makeToggle(pp,"fly","fly_sub",false,function(v)
+  PL.fly=v
+  if not v then
+   local c=P.Character
+   local hrp=c and c:FindFirstChild("HumanoidRootPart")
+   if hrp then pcall(function() hrp.AssemblyLinearVelocity=Vector3.zero end) end
+  end
+ end)
+ makeSlider(pp,"fly_speed",20,200,10,PL.flySpeed,function(v) PL.flySpeed=v end)
+
+ head(pp,"p_tp")
+ makeButton(pp,"tp_egg","acc",function()
+  local e=nearestEgg(true)
+  if not e then e=nearestEgg(false) end
+  tpTo(e)
+ end)
+ makeButton(pp,"reset_char","bad",function()
+  local h=hum()
+  if h then h.Health=0 end
+ end)
+
+ conn(RS.Heartbeat:Connect(function()
+  local h=hum()
+  if h then
+   if PL.speed then h.WalkSpeed=PL.speedVal end
+   if PL.jump then
+    pcall(function() h.UseJumpPower=true h.JumpPower=PL.jumpVal end)
+   end
+  end
+  if PL.fly then
+   local c=P.Character
+   local hrp=c and c:FindFirstChild("HumanoidRootPart")
+   local cam=workspace.CurrentCamera
+   if hrp and cam and not UIS:GetFocusedTextBox() then
+    local cf=cam.CFrame
+    local dir=Vector3.zero
+    if UIS:IsKeyDown(Enum.KeyCode.W) then dir=dir+cf.LookVector end
+    if UIS:IsKeyDown(Enum.KeyCode.S) then dir=dir-cf.LookVector end
+    if UIS:IsKeyDown(Enum.KeyCode.D) then dir=dir+cf.RightVector end
+    if UIS:IsKeyDown(Enum.KeyCode.A) then dir=dir-cf.RightVector end
+    if UIS:IsKeyDown(Enum.KeyCode.Space) then dir=dir+Vector3.new(0,1,0) end
+    if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then dir=dir-Vector3.new(0,1,0) end
+    hrp.AssemblyLinearVelocity=(dir.Magnitude>0) and (dir.Unit*PL.flySpeed) or Vector3.zero
+   end
+  end
+ end))
+ conn(RS.Stepped:Connect(function()
+  if PL.noclip then
+   local c=P.Character
+   if c then
+    for _,p in ipairs(c:GetDescendants()) do
+     if p:IsA("BasePart") and p.CanCollide then ncOrig[p]=true p.CanCollide=false end
+    end
+   end
+  end
+ end))
+ conn(UIS.JumpRequest:Connect(function()
+  if PL.inf then
+   local h=hum()
+   if h then pcall(function() h:ChangeState(Enum.HumanoidStateType.Jumping) end) end
+  end
+ end))
+
+ restorers[#restorers+1]=function()
+  local h=hum()
+  if PL.speed and h then pcall(function() h.WalkSpeed=origSpeed or 16 end) end
+  if PL.jump and h then pcall(function() h.JumpPower=origJump or 50 h.UseJumpPower=(origUseJP==nil) and true or origUseJP end) end
+  PL.speed=false PL.jump=false PL.inf=false PL.noclip=false PL.fly=false
+  for p in pairs(ncOrig) do pcall(function() p.CanCollide=true end) end
+ end
+end
+
+--// ---------------- PERFORMANCE ----------------
+do
+ local fp=scroller(newPage("perf"))
+ local PF={part=false,fx=false,mat=false,cap=false,capVal=60}
+ local shadowOrig,qualOrig
+ local pOff={}
+ local fxOrig=setmetatable({},{__mode="k"})
+ local matOrig=setmetatable({},{__mode="k"})
+ local tg={}
+ local hasCap=(type(setfpscap)=="function")
+
+ head(fp,"f_live")
+ local live=makeLabelBox(fp,nil,nil,32)
+
+ head(fp,"f_gfx")
+ tg.shadow=makeToggle(fp,"shadows","shadows_sub",false,function(v)
+  if v then
+   shadowOrig=Lighting.GlobalShadows
+   Lighting.GlobalShadows=false
+  elseif shadowOrig~=nil then
+   Lighting.GlobalShadows=shadowOrig
+  end
+ end)
+ tg.part=makeToggle(fp,"part","part_sub",false,function(v)
+  PF.part=v
+  if v then
+   task.spawn(function()
+    local d=workspace:GetDescendants()
+    for i=1,#d do
+     if not alive or not PF.part then return end
+     local o=d[i]
+     if o:IsA("ParticleEmitter") and o.Enabled then pOff[o]=true o.Enabled=false end
+     if i%500==0 then task.wait() end
+    end
+   end)
+  else
+   for o in pairs(pOff) do pcall(function() o.Enabled=true end) pOff[o]=nil end
+  end
+ end)
+ conn(workspace.DescendantAdded:Connect(function(o)
+  if PF.part and o:IsA("ParticleEmitter") then
+   task.defer(function()
+    if PF.part and o.Parent and o.Enabled then pOff[o]=true o.Enabled=false end
+   end)
+  end
+  if PF.mat and o:IsA("BasePart") and not o:IsA("Terrain") then
+   task.defer(function()
+    if PF.mat and o.Parent and o.Material~=Enum.Material.Neon and o.Material~=Enum.Material.SmoothPlastic then
+     matOrig[o]=o.Material
+     o.Material=Enum.Material.SmoothPlastic
+    end
+   end)
+  end
+ end))
+ local function fxDo(o)
+  if o:IsA("PostEffect") and o.Name~="AntonioCC" and o.Enabled then
+   fxOrig[o]=true
+   o.Enabled=false
+  end
+ end
+ tg.fx=makeToggle(fp,"fx","fx_sub",false,function(v)
+  PF.fx=v
+  if v then
+   for _,o in ipairs(Lighting:GetChildren()) do pcall(fxDo,o) end
+   local cam=workspace.CurrentCamera
+   if cam then for _,o in ipairs(cam:GetChildren()) do pcall(fxDo,o) end end
+  else
+   for o in pairs(fxOrig) do pcall(function() o.Enabled=true end) fxOrig[o]=nil end
+  end
+ end)
+ conn(Lighting.ChildAdded:Connect(function(o)
+  if PF.fx then task.defer(function() pcall(fxDo,o) end) end
+ end))
+ tg.mat=makeToggle(fp,"mat","mat_sub",false,function(v)
+  PF.mat=v
+  if v then
+   task.spawn(function()
+    local d=workspace:GetDescendants()
+    for i=1,#d do
+     if not alive or not PF.mat then return end
+     local o=d[i]
+     if o:IsA("BasePart") and not o:IsA("Terrain") and o.Material~=Enum.Material.Neon and o.Material~=Enum.Material.SmoothPlastic then
+      matOrig[o]=o.Material
+      o.Material=Enum.Material.SmoothPlastic
+     end
+     if i%400==0 then task.wait() end
+    end
+   end)
+  else
+   for o,m in pairs(matOrig) do pcall(function() o.Material=m end) matOrig[o]=nil end
+  end
+ end)
+ tg.qual=makeToggle(fp,"qual","qual_sub",false,function(v)
+  pcall(function()
+   local r=settings().Rendering
+   if v then
+    qualOrig=r.QualityLevel
+    r.QualityLevel=Enum.QualityLevel.Level01
+   elseif qualOrig then
+    r.QualityLevel=qualOrig
+   end
+  end)
+ end)
+
+ head(fp,"f_limit")
+ if hasCap then
+  tg.cap=makeToggle(fp,"cap","cap_sub",false,function(v)
+   PF.cap=v
+   pcall(function() setfpscap(v and PF.capVal or 0) end)
+  end)
+  makeSlider(fp,"cap_val",15,240,5,PF.capVal,function(v)
+   PF.capVal=v
+   if PF.cap then pcall(function() setfpscap(v) end) end
+  end)
+ else
+  makeLabelBox(fp,"cap_na",nil,36)
+ end
+
+ head(fp,"f_afk")
+ tg.r3d=makeToggle(fp,"render3d","render3d_sub",false,function(v)
+  pcall(function() RS:Set3dRenderingEnabled(not v) end)
+ end)
+ makeButton(fp,"afk_preset","acc",function()
+  tg.shadow.set(true) tg.part.set(true) tg.fx.set(true) tg.r3d.set(true)
+ end)
+ makeButton(fp,"reset_all","bad",function()
+  for _,t in pairs(tg) do if t.get() then t.set(false) end end
+ end)
+ makeLabelBox(fp,"f_tip",nil,44)
+
+ task.spawn(function()
+  while alive do
+   if cur=="perf" then
+    local ping="-"
+    pcall(function() ping=math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue()).." ms" end)
+    live.Text=trf("f_live_t",tostring(env.__ANTONIO_FPS or 0),ping)
+   end
+   task.wait(0.5)
+  end
+ end)
+
+ restorers[#restorers+1]=function()
+  PF.part=false PF.fx=false PF.mat=false
+  pcall(function() RS:Set3dRenderingEnabled(true) end)
+  if shadowOrig~=nil then pcall(function() Lighting.GlobalShadows=shadowOrig end) end
+  if qualOrig then pcall(function() settings().Rendering.QualityLevel=qualOrig end) end
+  if hasCap and PF.cap then pcall(function() setfpscap(0) end) end
+  for o in pairs(pOff) do pcall(function() o.Enabled=true end) pOff[o]=nil end
+  for o in pairs(fxOrig) do pcall(function() o.Enabled=true end) fxOrig[o]=nil end
+  for o,m in pairs(matOrig) do pcall(function() o.Material=m end) matOrig[o]=nil end
+ end
+end
+
+--// ---------------- TOOLS ----------------
+do
+ local tp=scroller(newPage("tools"))
+ head(tp,"t_server")
+ local tgrid=new("Frame",{Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1,LayoutOrder=ord(tp)},tp)
+ new("UIGridLayout",{CellSize=UDim2.new(0.5,-5,0,40),CellPadding=UDim2.fromOffset(10,10),SortOrder=Enum.SortOrder.LayoutOrder},tgrid)
+ makeButton(tgrid,"hop",Color3.fromRGB(40,100,170),serverHop,1)
+ makeButton(tgrid,"rejoin",Color3.fromRGB(150,60,80),rejoin,2)
+ makeButton(tp,"copy_id",Color3.fromRGB(90,60,200),function()
+  if setclipboard then
+   pcall(setclipboard,game.JobId)
+   setToolStatus(tr("copy_ok"))
+  else
+   setToolStatus(tr("copy_na"))
+  end
+ end)
+
+ -- Respawn
+ head(tp,"t_char")
+ local function respawn(keepPos)
+  local c=P.Character
+  local hrp=c and c:FindFirstChild("HumanoidRootPart")
+  local h=c and c:FindFirstChildOfClass("Humanoid")
+  if not h then return end
+  local cf=hrp and hrp.CFrame
+  setToolStatus(tr("respawning"))
+  if keepPos and cf then
+   local cc
+   cc=P.CharacterAdded:Connect(function(ch)
+    cc:Disconnect()
+    local r=ch:WaitForChild("HumanoidRootPart",10)
+    if r and alive then
+     task.wait(0.4)
+     pcall(function() r.CFrame=cf end)
+     setToolStatus(tr("ready"))
+    end
+   end)
+  end
+  h.Health=0
+ end
+ local rgrid=new("Frame",{Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1,LayoutOrder=ord(tp)},tp)
+ new("UIGridLayout",{CellSize=UDim2.new(0.5,-5,0,40),CellPadding=UDim2.fromOffset(10,10),SortOrder=Enum.SortOrder.LayoutOrder},rgrid)
+ makeButton(rgrid,"respawn","bad",function() respawn(false) end,1)
+ makeButton(rgrid,"respawn_pos",Color3.fromRGB(90,60,200),function() respawn(true) end,2)
+
+ head(tp,"t_misc")
+ makeToggle(tp,"afk","afk_sub",true,nil,nil,"afk")
+ local toolStatus=makeLabelBox(tp,"ready",nil,44)
+ setToolStatus=function(t) toolStatus.Text=t end
+
+ head(tp,"t_sweep")
+ makeSlider(tp,"sweep_r",1000,15000,500,S.sweepR,function(v) S.sweepR=v save() end,nil,function(v) return v.." m" end)
+ local sweepBtn
+ sweepBtn=makeButton(tp,"sweep_btn","acc",function()
+  if sweeping then sweeping=false return end
+  local en=false
+  pcall(function() en=workspace.StreamingEnabled end)
+  if not en then setToolStatus(tr("sweep_off")) return end
+  if not hasStreamReq then setToolStatus(tr("sweep_na")) return end
+  sweepBtn.Text=tr("sweep_stop")
+  local started=runSweep(S.sweepR,function(i,n,c) setToolStatus(trf("sweep_prog",i,n,c)) end,function(c)
+   sweepBtn.Text=tr("sweep_btn")
+   setToolStatus(trf("sweep_done",c))
+  end)
+  if not started then sweepBtn.Text=tr("sweep_btn") end
+ end)
+ makeButton(tp,"esp_cache_clear",Color3.fromRGB(150,60,80),function() clearGhosts() end)
+ makeLabelBox(tp,"sweep_info",nil,52)
+end
+
+--// ---------------- AUTOFARM ----------------
+do
+ local fp=scroller(newPage("farm"))
+ head(fp,"a_head")
+ makeToggle(fp,"a_on","a_on_sub",false,nil,nil,"quick")
+
+ makeSlider(fp,"a_delay",0.1,1.5,0.1,QUICK_DELAY,function(v)
+  QUICK_DELAY=v
+  setFarmStatus(trf("a_delay_set",tostring(v)))
+ end,nil,function(v) return v.."s" end)
+
+ local counter=makeLabelBox(fp,nil,nil,32)
+ local farmStatus=makeLabelBox(fp,"ready",nil,40)
+ setFarmStatus=function(t) farmStatus.Text=t end
+ makeLabelBox(fp,"a_more",nil,52)
+
+ task.spawn(function()
+  while alive do
+   if cur=="farm" then counter.Text=trf("a_clicks",quickClicks) end
+   task.wait(0.5)
+  end
+ end)
+end
+
+--// ---------------- EINSTELLUNGEN (ganz unten) ----------------
+do
+ local sp=scroller(newPage("settings"))
+ local customToggle
+
+ head(sp,"s_lang")
+ makeSegment(sp,"s_lang_t",{"lang_de","lang_en"},S.lang=="en" and 2 or 1,function(i) setLang(i==2 and "en" or "de") end)
+
+ head(sp,"s_general")
+ local keyBtn
+ local listening=false
+ keyBtn=makeButton(sp,"",Color3.fromRGB(70,74,100),function()
+  listening=true
+  keyBtn.Text=tr("s_key_wait")
+ end)
+ refreshKey=function()
+  keyBtn.Text=trf("s_key",S.menuKey)
+  refreshHint()
+ end
+ onLang(refreshKey)
+ conn(UIS.InputBegan:Connect(function(i,gp)
+  if listening then
+   if i.UserInputType==Enum.UserInputType.Keyboard then
+    listening=false
+    if i.KeyCode~=Enum.KeyCode.Escape and i.KeyCode~=Enum.KeyCode.Unknown then
+     S.menuKey=i.KeyCode.Name
+     save()
+    end
+    refreshKey()
+   end
+   return
+  end
+  if gp then return end
+  if i.KeyCode.Name==S.menuKey then main.Visible=not main.Visible end
+ end))
+ makeButton(sp,"s_center",Color3.fromRGB(70,74,100),function()
+  main.Position=UDim2.new(0.5,0,0.5,-WIN_H/2)
+ end)
+ makeToggle(sp,"s_tips","s_tips_sub",S.showTips,function(v) S.showTips=v save() applyTips() end)
+
+ head(sp,"s_design")
+ local themeSeg
+ themeSeg=makeSegment(sp,"s_theme",{"th_dark","th_mid","th_amoled","th_light"},S.theme,function(i)
+  S.theme=i save() refreshTheme()
+ end)
+ local swatchObj
+ swatchObj=makeSwatches(sp,"s_accent",ACCENTS,S.accent,function(i)
+  S.accent=i
+  S.custom=false
+  if customToggle then customToggle.silent(false) end
+  save() refreshTheme()
+ end)
+ customToggle=makeToggle(sp,"s_custom","s_custom_sub",S.custom,function(v) S.custom=v save() refreshTheme() end)
+ local function customChanged()
+  S.custom=true
+  customToggle.silent(true)
+  save() refreshTheme()
+ end
+ makeSlider(sp,"red",0,255,5,S.accR,function(v) S.accR=v customChanged() end)
+ makeSlider(sp,"green",0,255,5,S.accG,function(v) S.accG=v customChanged() end)
+ makeSlider(sp,"blue",0,255,5,S.accB,function(v) S.accB=v customChanged() end)
+
+ makeStepper(sp,"s_font",FAMILIES[S.font].n,function(dir)
+  S.font=((S.font-1+dir)%#FAMILIES)+1
+  save() applyFonts()
+  return FAMILIES[S.font].n
+ end)
+ makeSlider(sp,"s_scale",70,130,5,S.uiScale,function(v) S.uiScale=v save() applyScale() end,nil,function(v) return v.."%" end)
+ makeToggle(sp,"s_anim","s_anim_sub",S.anim,function(v) S.anim=v save() end)
+ makeToggle(sp,"s_border","s_border_sub",S.borderAnim,function(v) S.borderAnim=v save() end)
+
+ head(sp,"s_esp")
+ makeToggle(sp,"s_hl","s_hl_sub",S.hl,function(v) S.hl=v save() end)
+ makeToggle(sp,"s_hlo","s_hlo_sub",S.hlOutline,function(v) S.hlOutline=v save() end)
+ makeSlider(sp,"s_fill",0,90,5,math.floor(S.fill*100+0.5),function(v) S.fill=v/100 save() end,nil,function(v) return v.."%" end)
+ makeToggle(sp,"s_pulse","s_pulse_sub",S.pulse,function(v) S.pulse=v save() end)
+ makeToggle(sp,"s_name",nil,S.showName,function(v) S.showName=v save() end)
+ makeToggle(sp,"s_short","s_short_sub",S.shortNames,function(v) S.shortNames=v save() end)
+ makeToggle(sp,"s_luck",nil,S.showLuck,function(v) S.showLuck=v save() end)
+ makeToggle(sp,"s_dist",nil,S.showDist,function(v) S.showDist=v save() end)
+ makeToggle(sp,"s_size",nil,S.showSize,function(v) S.showSize=v save() end)
+ makeSlider(sp,"s_tsize",10,30,1,S.textSize,function(v) S.textSize=v save() end)
+ makeStepper(sp,"s_efont",FAMILIES[S.espFont].n,function(dir)
+  S.espFont=((S.espFont-1+dir)%#FAMILIES)+1
+  save()
+  return FAMILIES[S.espFont].n
+ end)
+ makeToggle(sp,"s_ghost","s_ghost_sub",S.ghost,function(v) S.ghost=v save() if not v then clearGhosts() end end)
+ makeToggle(sp,"s_tracer","s_tracer_sub",S.tracers,function(v) S.tracers=v save() end)
+ makeSegment(sp,"s_torigin",{"o_bottom","o_center","o_top"},S.tracerOrigin,function(i) S.tracerOrigin=i save() end)
+ makeSlider(sp,"s_tw",1,5,1,S.tracerW,function(v) S.tracerW=v save() end)
+
+ head(sp,"s_tpsec")
+ makeSlider(sp,"s_tph",0,50,1,S.tpHeight,function(v) S.tpHeight=v save() end,nil,function(v) return v.." studs" end)
+ makeSlider(sp,"s_scani",3,60,1,S.scanInt,function(v) S.scanInt=v save() end,nil,function(v) return v.." s" end)
+
+ head(sp,"s_notif")
+ makeSlider(sp,"s_ttime",2,10,1,S.toastTime,function(v) S.toastTime=v save() end,nil,function(v) return v.." s" end)
+
+ head(sp,"s_data")
+ makeLabelBox(sp,canFile and "s_save_info" or "s_save_na",nil,40)
+ makeButton(sp,"s_reset","bad",function()
+  noSave=true
+  if canFile then pcall(function() writefile(FILE,"{}") end) end
+  notify(tr("s_reset_msg"),C.good,true)
+  task.delay(1.4,function() closeHub() end)
+ end)
+ makeButton(sp,"s_unload",Color3.fromRGB(70,74,100),function() closeHub() end)
+end
+
+--// =========================================================
+--// LOOPS
+--// =========================================================
+env.__ANTONIO_T0=tick()
+
+-- Render-Loop: ESP-Anzeige
+do
+ local textT=0
+ conn(RS.RenderStepped:Connect(function()
+  local cam=workspace.CurrentCamera
+  if not cam then return end
+  local now=tick()
+  local vs=cam.ViewportSize
+  local c=P.Character
+  local hrp=c and c:FindFirstChild("HumanoidRootPart")
+  local ref=hrp and hrp.Position or cam.CFrame.Position
+  local pulse=math.abs(math.sin(now*3))
+  local origin
+  if S.tracerOrigin==2 then origin=Vector2.new(vs.X/2,vs.Y/2)
+  elseif S.tracerOrigin==3 then origin=Vector2.new(vs.X/2,0)
+  else origin=Vector2.new(vs.X/2,vs.Y) end
+  local doText=now>=textT
+  if doText then textT=now+0.1 end
+  local fnt=espFontEnum()
+  for _,m in pairs(marks) do
+   local ty=TYPES[m.ti]
+   local part=m.part
+   if part and part.Parent and ty then
+    local d=(part.Position-ref).Magnitude
+    local show=S.espOn and (S.maxDist<=0 or d<=S.maxDist)
+    m.bb.Enabled=show
+    if m.hl then
+     m.hl.Enabled=show and S.hl and m.allow
+     if show then
+      m.hl.FillTransparency=math.clamp(S.fill+(S.pulse and 0.3*pulse or 0),0,1)
+      m.hl.OutlineTransparency=S.hlOutline and 0 or 1
+     end
+    end
+    if show then
+     m.lb.TextSize=S.textSize
+     m.lb.Font=fnt
+     if doText then
+      local lines={}
+      if S.showName then lines[#lines+1]=S.shortNames and (ty.name:gsub(" Egg","")) or ty.name end
+      if S.showLuck then lines[#lines+1]="Luck "..ty.luck end
+      if S.showDist then lines[#lines+1]=math.floor(d).." m" end
+      if S.showSize then lines[#lines+1]=tr("size")..": "..string.format("%.1f",m.big).." studs" end
+      if m.ghost then lines[#lines+1]=tr("ghost_tag") end
+      m.lb.Text=table.concat(lines,"\n")
+     end
+    end
+    if m.line then
+     local v,on=cam:WorldToViewportPoint(part.Position)
+     local vis=show and on and S.tracers
+     m.line.Visible=vis
+     if vis then
+      m.line.From=origin
+      m.line.To=Vector2.new(v.X,v.Y)
+      m.line.Thickness=S.tracerW
+     end
+    end
+   else
+    m.bb.Enabled=false
+    if m.hl then m.hl.Enabled=false end
+    if m.line then m.line.Visible=false end
+   end
+  end
+ end))
+end
+
+-- Highlights nach Entfernung begrenzen (Roblox-Limit)
+task.spawn(function()
+ while alive do
+  pcall(function()
+   local cam=workspace.CurrentCamera
+   local c=P.Character
+   local hrp=c and c:FindFirstChild("HumanoidRootPart")
+   local ref=hrp and hrp.Position or (cam and cam.CFrame.Position)
+   if ref then
+    local list={}
+    for _,m in pairs(marks) do
+     if m.hl and m.part and m.part.Parent then
+      m.d=(m.part.Position-ref).Magnitude
+      list[#list+1]=m
+     else
+      m.allow=false
+     end
+    end
+    table.sort(list,function(a,b) return a.d<b.d end)
+    for i,m in ipairs(list) do m.allow=(i<=HL_MAX) end
+   end
+  end)
+  task.wait(0.3)
+ end
+end)
+
+task.spawn(function()
+ while alive do
+  pcall(updateTargets)
+  if cur=="esp" then
+   if not scanning then setEspStatus(trf("targets",markCount()).."\n"..summary(lastCounts)) end
+   for i,r in ipairs(eggRows) do
+    local n=allCounts[i]
+    r.cnt.Text=n and ("×"..n) or ""
+   end
+  end
+  task.wait(1)
+ end
+end)
+
+task.spawn(function()
+ while alive do
+  task.wait(S.scanInt)
+  fullScan(false)
+ end
+end)
+
+--// =========================================================
+--// START / UNLOAD
+--// =========================================================
+refreshKey()
+refreshTheme()
+fullScan(false)
+showPage("start")
+pcall(updateStart)
+
+local function unload()
+ alive=false
+ quickOn=false
+ notifyOn=false
+ for _,r in ipairs(restorers) do pcall(r) end
+ for _,c in ipairs(conns) do pcall(function() c:Disconnect() end) end
+ sweeping=false
+ for o in pairs(marks) do unmark(o) end
+ pcall(function() if ghostFolder then ghostFolder:Destroy() end end)
+ pcall(function() gui:Destroy() end)
+ env.__ANTONIO_UNLOAD=nil
+end
+env.__ANTONIO_UNLOAD=unload
+closeHub=function()
+ tw(uiscale,{Scale=baseScale*0.8},0.2,Enum.EasingStyle.Back,Enum.EasingDirection.In)
+ task.delay(0.22,unload)
+end
+closeB.MouseButton1Click:Connect(function() closeHub() end)
+
+print("Antonio Hub v3.1 geladen")
