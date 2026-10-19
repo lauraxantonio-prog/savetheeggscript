@@ -1,4 +1,5 @@
---// ANTONIO HUB v3.4  (Start | ESP | Anzahl | Teleport | Visuals | Notifier | Spieler | Performance | Tools | Autofarm | Home | Einstellungen)
+--// ANTONIO HUB v3.5  (Start | ESP | Anzahl | Teleport | Visuals | Notifier | Spieler | Performance | Tools | Autofarm | Home | Einstellungen)
+--// v3.5: Wenn ein Home gesetzt ist, werden alle Eier im Radius (Standard 500 m) ueberall ausgeblendet (ESP, Teleport, Anzahl, Notifier, Start)
 --// v3.4: ESP-Text kompakt: nur Name, Entfernung (m) und Hoehe ("H 7.0"), kleinere Schrift, kein Luck, kein "gemerkt"-Hinweis
 --// v3.3.1: FIX "Out of local registers ... exceeded limit 200" (Start- und Teleport-Seite laufen in eigenen Funktionen)
 local Players=game:GetService("Players")
@@ -38,6 +39,8 @@ local S={
  eggsInit=false,nameScan=true,tpSort=1,homeMarker=true,homes={},
  -- neu in v3.4
  espv=0,
+ -- neu in v3.5
+ homeHide=true,homeRadius=500,
 }
 do
  if canFile then
@@ -201,6 +204,8 @@ add("h_tp_ok","Zu Home teleportiert","Teleported home")
 add("h_nochar","Kein Charakter gefunden","No character found")
 add("h_info","Das Home wird pro Spiel gespeichert und beim nächsten Start automatisch geladen.","Home is saved per game and loaded automatically next time.")
 add("h_info_na","Dein Executor kann keine Dateien speichern – Home gilt nur für diese Sitzung.","Your executor can't save files – home only lasts for this session.")
+add("h_hide","Eier im Radius ausblenden","Hide eggs in radius") add("h_hide_sub","Eier um dein Home verschwinden aus ESP, Teleport & Listen","Eggs around your home vanish from ESP, teleport & lists")
+add("h_radius","Home-Radius","Home radius")
 -- Visuals
 add("v_light","Beleuchtung","Lighting")
 add("fullbright","Fullbright","Fullbright") add("fb_sub","Alles dauerhaft hell","Keeps everything bright") add("fb_bright","Helligkeit","Brightness")
@@ -497,6 +502,7 @@ local applyTips=function() end
 local updateCount=function() end
 local updateTeleport=function() end
 local eggRows={}
+local inHomeZone=function() return false end
 local main
 
 --// =========================================================
@@ -806,8 +812,12 @@ local function updateTargets()
    if drop then cache[k]=nil end
   end
  end
- local want,counts,all={}, {}, {}
+ local vis={}
  for k,e in pairs(cache) do
+  if not inHomeZone(e.pos) then vis[k]=e end
+ end
+ local want,counts,all={}, {}, {}
+ for k,e in pairs(vis) do
   all[e.ti]=(all[e.ti] or 0)+1
   if TYPES[e.ti].on then
    counts[e.ti]=(counts[e.ti] or 0)+1
@@ -828,7 +838,7 @@ local function updateTargets()
  end
  allCounts=all
  lastCounts=counts
- lastTargets=cache
+ lastTargets=vis
  return counts
 end
 
@@ -1554,6 +1564,12 @@ local function getHome()
  local h=S.homes[homeKey]
  if type(h)=="table" and type(h.x)=="number" and type(h.y)=="number" and type(h.z)=="number" then return h end
  return nil
+end
+inHomeZone=function(pos)
+ if not S.homeHide then return false end
+ local h=getHome()
+ if not h then return false end
+ return (pos-Vector3.new(h.x,h.y,h.z)).Magnitude<=S.homeRadius
 end
 local function homeChanged()
  for _,f in ipairs(homeFns) do pcall(f) end
@@ -2706,6 +2722,7 @@ do
  local function destroyMarker()
   if marker.bb then pcall(function() marker.bb:Destroy() end) marker.bb=nil end
   if marker.part then pcall(function() marker.part:Destroy() end) marker.part=nil end
+  if marker.ring then pcall(function() marker.ring:Destroy() end) marker.ring=nil end
   marker.lb=nil
  end
  local function refreshMarker()
@@ -2719,6 +2736,11 @@ do
     MaxDistance=math.huge,LightInfluence=0,ResetOnSpawn=false},gui)
    marker.lb=raw("TextLabel",{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,TextColor3=Color3.fromRGB(255,215,70),
     TextStrokeTransparency=0,Font=Enum.Font.GothamBold,TextSize=14,Text="Home"},marker.bb)
+   if S.homeHide then
+    marker.ring=raw("Part",{Name="AntonioHomeRing",Anchored=true,CanCollide=false,CanQuery=false,CanTouch=false,CastShadow=false,
+     Shape=Enum.PartType.Cylinder,Material=Enum.Material.Neon,Color=Color3.fromRGB(255,215,70),Transparency=0.88,
+     Size=Vector3.new(1,S.homeRadius*2,S.homeRadius*2),CFrame=CFrame.new(h.x,h.y-2,h.z)*CFrame.Angles(0,0,math.pi/2)},workspace)
+   end
   end)
  end
 
@@ -2742,9 +2764,12 @@ do
  makeButton(hp,"h_tp",Color3.fromRGB(90,60,200),function() tpHome() end)
  makeButton(hp,"h_clear","bad",function() clearHome() end)
  makeToggle(hp,"h_marker","h_marker_sub",S.homeMarker,function(v) S.homeMarker=v save() refreshMarker() end)
+ makeToggle(hp,"h_hide","h_hide_sub",S.homeHide,function(v) S.homeHide=v save() refreshMarker() pcall(updateTargets) end)
+ makeSlider(hp,"h_radius",100,1000,50,S.homeRadius,function(v) S.homeRadius=v save() refreshMarker() pcall(updateTargets) end,nil,function(v) return v.." m" end)
  makeLabelBox(hp,canFile and "h_info" or "h_info_na",nil,44)
 
  homeFns[#homeFns+1]=refreshInfo
+ homeFns[#homeFns+1]=function() pcall(updateTargets) end
  homeFns[#homeFns+1]=refreshMarker
  refreshMarker()
 
@@ -3032,4 +3057,4 @@ closeHub=function()
 end
 closeB.MouseButton1Click:Connect(function() closeHub() end)
 
-print("Antonio Hub v3.4 geladen")
+print("Antonio Hub v3.5 geladen")
