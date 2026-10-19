@@ -1,5 +1,6 @@
---// ANTONIO HUB v3.2  (Start | ESP | Anzahl | Teleport | Visuals | Notifier | Spieler | Performance | Tools | Autofarm | Einstellungen)
---// v3.2: Box-Markierung ohne 31er-Highlight-Limit (ueberzaehlige Eier + gemerkte "Geister" bleiben immer sichtbar), Label ohne Distanzgrenze
+--// ANTONIO HUB v3.3.1  (Start | ESP | Anzahl | Teleport | Visuals | Notifier | Spieler | Performance | Tools | Autofarm | Home | Einstellungen)
+--// v3.3.1: FIX "Out of local registers ... exceeded limit 200" (Start- und Teleport-Seite laufen jetzt in eigenen Funktionen)
+--// v3.3: ESP-Fix fuer andere Spieler (Eier standardmaessig AN + Namens-Erkennung als Fallback), Teleport-Seite listet JEDES Ei einzeln (Suche, Position, Meter), neuer Home-Bereich
 local Players=game:GetService("Players")
 local RS=game:GetService("RunService")
 local UIS=game:GetService("UserInputService")
@@ -33,6 +34,8 @@ local S={
  notifyMin=15,notifySound=false,toastTime=4,eggs={},
  -- neu in v3.1
  tpHeight=5,scanInt=10,shortNames=false,hlOutline=true,showTips=true,countOnlyFound=true,countSort=1,
+ -- neu in v3.3
+ eggsInit=false,nameScan=true,tpSort=1,homeMarker=true,homes={},
 }
 do
  if canFile then
@@ -99,9 +102,17 @@ local TYPES={
  {name="Galaxy Egg",      text="galaxy egg",      luck="20B",  color=Color3.fromRGB(170,90,255)},
  {name="Demon Egg",       text="demon egg",       luck="200B", color=Color3.fromRGB(190,20,20)},
 }
+-- v3.3 FIX: Neue Spieler hatten KEINE Ei-Sorte aktiv (leere Einstellungsdatei) und sahen deshalb 0 Eier.
+-- Beim allerersten Start sind jetzt alle Sorten AN.
+if not S.eggsInit and next(S.eggs)==nil then
+ for _,ty in ipairs(TYPES) do S.eggs[ty.text]=true end
+end
+S.eggsInit=true
 for _,ty in ipairs(TYPES) do ty.on=(S.eggs[ty.text]==true) end
+save()
 S.notifyMin=math.clamp(math.floor(S.notifyMin),1,#TYPES)
 S.countSort=math.clamp(math.floor(S.countSort),1,2)
+S.tpSort=math.clamp(math.floor(S.tpSort),1,2)
 
 --// =========================================================
 --// SPRACHE
@@ -112,7 +123,7 @@ local function add(k,de,en) D.de[k]=de D.en[k]=en end
 add("nav_start","Start","Start") add("nav_esp","ESP","ESP") add("nav_count","Anzahl","Count") add("nav_teleport","Teleport","Teleport")
 add("nav_visuals","Visuals","Visuals")
 add("nav_notifier","Notifier","Notifier") add("nav_player","Spieler","Player") add("nav_perf","Performance","Performance")
-add("nav_tools","Tools","Tools") add("nav_farm","Autofarm","Autofarm") add("nav_settings","Einstellungen","Settings")
+add("nav_tools","Tools","Tools") add("nav_farm","Autofarm","Autofarm") add("nav_home","Home","Home") add("nav_settings","Einstellungen","Settings")
 add("on","AN","ON") add("off","AUS","OFF") add("ready","Bereit","Ready")
 add("key_hint","%s = Menü an/aus","%s = toggle menu")
 -- Start
@@ -158,8 +169,29 @@ add("c_sort","Sortierung","Sorting") add("sort_luck","Nach Luck","By luck") add(
 add("c_empty","Keine Eier gefunden – scanne neu im ESP-Tab.","No eggs found – rescan in the ESP tab.")
 -- Teleport
 add("tp_rare","Zum seltensten Ei","To rarest egg")
-add("tp_status","Klick auf ein Ei = Teleport zum nächsten dieser Sorte.","Click an egg = teleport to the nearest one of that type.")
+add("tp_status","Klick auf ein Ei = Teleport genau zu diesem Ei.","Click an egg = teleport to exactly that egg.")
 add("tp_none_type","%s: kein Ei im Server bekannt","%s: no egg known in this server")
+add("tp_sort_luck","Sort: Luck","Sort: Luck") add("tp_sort_dist","Sort: Nähe","Sort: Distance")
+add("tp_home","Zu Home","To home")
+add("tp_count","%d von %d Eiern angezeigt","%d of %d eggs shown")
+add("tp_gone","Dieses Ei ist nicht mehr da","That egg is gone")
+add("tp_nohome","Kein Home gesetzt (Bereich Home)","No home set (Home tab)")
+-- Home
+add("h_head","Home / Plot","Home / Plot")
+add("h_cur","Dein Home","Your home")
+add("h_none","Noch kein Home gesetzt. Stell dich an deinen Plot und drücke „Home hier setzen“.","No home set yet. Stand at your plot and press “Set home here”.")
+add("h_pos","X %d  Y %d  Z %d  •  %d m entfernt","X %d  Y %d  Z %d  •  %d m away")
+add("h_pos_nodist","X %d  Y %d  Z %d","X %d  Y %d  Z %d")
+add("h_set","Home hier setzen","Set home here")
+add("h_tp","Zu Home teleportieren","Teleport to home")
+add("h_clear","Home löschen","Delete home")
+add("h_marker","Home-Markierung","Home marker") add("h_marker_sub","Zeigt dein Home mit Entfernung in der Welt an","Shows your home with distance in the world")
+add("h_set_ok","Home gesetzt!","Home set!")
+add("h_cleared","Home gelöscht","Home deleted")
+add("h_tp_ok","Zu Home teleportiert","Teleported home")
+add("h_nochar","Kein Charakter gefunden","No character found")
+add("h_info","Das Home wird pro Spiel gespeichert und beim nächsten Start automatisch geladen.","Home is saved per game and loaded automatically next time.")
+add("h_info_na","Dein Executor kann keine Dateien speichern – Home gilt nur für diese Sitzung.","Your executor can't save files – home only lasts for this session.")
 -- Visuals
 add("v_light","Beleuchtung","Lighting")
 add("fullbright","Fullbright","Fullbright") add("fb_sub","Alles dauerhaft hell","Keeps everything bright") add("fb_bright","Helligkeit","Brightness")
@@ -274,6 +306,8 @@ add("s_unload","Hub entladen","Unload hub")
 add("ghost_tag","gemerkt (zuletzt gesehen)","remembered (last seen)")
 add("s_ghost","Entfernte Eier merken","Remember distant eggs")
 add("s_ghost_sub","Eier bleiben sichtbar, auch wenn das Spiel sie ausblendet","Eggs stay visible even when the game streams them out")
+add("s_names","Namens-Erkennung","Name detection")
+add("s_names_sub","Findet Eier auch ohne Prompt (Fallback, nur wenn sonst nichts erkannt wird)","Finds eggs even without a prompt (fallback, only if nothing else is detected)")
 add("esp_dist","ESP-Reichweite","ESP range")
 add("esp_cache_clear","Gemerkte Eier leeren","Clear remembered eggs")
 add("t_sweep","Fern-Scan","Far scan")
@@ -459,7 +493,7 @@ local main
 --// =========================================================
 --// ESP KERN  (Fix: Eier verschwinden nicht mehr)
 --// =========================================================
-local prompts,marks={}, {}
+local prompts,marks,named={}, {}, {}
 local lastCounts,allCounts,lastTargets={}, {}, {}
 local scanning=false
 local notified={}
@@ -560,8 +594,17 @@ function targetOf(p,now)
  return best,base
 end
 
+-- v3.3: Prompts sammeln + (Fallback) Objekte, die exakt wie ein Ei heissen
 function addPrompt(o)
- if o:IsA("ProximityPrompt") then prompts[o]=true end
+ if o:IsA("ProximityPrompt") then prompts[o]=true return end
+ if o:IsA("Model") or (o:IsA("BasePart") and not o:IsA("Terrain")) then
+  local ti=KEY2IDX[norm(o.Name)]
+  if ti then
+   local par=o.Parent
+   if par and par:IsA("Model") and KEY2IDX[norm(par.Name)]==ti then return end
+   named[o]=ti
+  end
+ end
 end
 
 end
@@ -650,6 +693,15 @@ local function mark(k,e)
  marks[k]={hl=hl,box=box,bb=bb,lb=lb,line=line,part=part,ghostPart=ghostPart,obj=obj,ghost=(obj==nil),big=e.big or 0,ti=e.ti,allow=true,d=0}
 end
 
+-- gehoert das Objekt zu einem Spieler-Charakter? (dann kein Ei, sondern z.B. getragenes Item)
+local function inPlayer(o)
+ for _,pl in ipairs(Players:GetPlayers()) do
+  local ch=pl.Character
+  if ch and o:IsDescendantOf(ch) then return true end
+ end
+ return false
+end
+
 local function updateTargets()
  local now=tick()
  local c=P.Character
@@ -665,6 +717,19 @@ local function updateTargets()
     local best,base=targetOf(p,now)
     if best and not (c and best:IsDescendantOf(c)) then
      items[#items+1]={ti=ti,best=best,base=base}
+    end
+   end
+  end
+ end
+ -- v3.3 Fallback: findet das Spiel ueber Prompts nichts, werden Objekte genommen, die exakt wie ein Ei heissen
+ if #items==0 and S.nameScan then
+  for o,ti in pairs(named) do
+   if not o.Parent then
+    named[o]=nil
+   elseif not inPlayer(o) then
+    local sz=sizeOf(o)
+    if not (sz and math.max(sz.X,sz.Y,sz.Z)>MAXSIZE) and partOf(o) then
+     items[#items+1]={ti=ti,best=o,base=o}
     end
    end
   end
@@ -1486,7 +1551,49 @@ local function tpTo(e)
  return false
 end
 
--- Eier-Liste (fuer Anzahl- und Teleport-Seite)
+--// ---------------- HOME KERN (Plot / Base) ----------------
+-- Wird pro Spiel (PlaceId) gespeichert: Position + Blickrichtung
+local homeKey=tostring(game.PlaceId)
+local homeFns={}
+local function getHome()
+ local h=S.homes[homeKey]
+ if type(h)=="table" and type(h.x)=="number" and type(h.y)=="number" and type(h.z)=="number" then return h end
+ return nil
+end
+local function homeChanged()
+ for _,f in ipairs(homeFns) do pcall(f) end
+end
+local function setHome()
+ local c=P.Character
+ local hrp=c and c:FindFirstChild("HumanoidRootPart")
+ if not hrp then notify(tr("h_nochar"),C.bad,true) return false end
+ local p=hrp.Position
+ local _,ry=hrp.CFrame:ToEulerAnglesYXZ()
+ S.homes[homeKey]={x=p.X,y=p.Y,z=p.Z,ry=ry}
+ save()
+ homeChanged()
+ notify(tr("h_set_ok"),C.good,true)
+ return true
+end
+local function clearHome()
+ S.homes[homeKey]=nil
+ save()
+ homeChanged()
+ notify(tr("h_cleared"),C.good,true)
+end
+local function tpHome()
+ local h=getHome()
+ if not h then notify(tr("tp_nohome"),C.bad,true) return false end
+ local c=P.Character
+ local hrp=c and c:FindFirstChild("HumanoidRootPart")
+ if not hrp then notify(tr("h_nochar"),C.bad,true) return false end
+ hrp.CFrame=CFrame.new(h.x,h.y+2,h.z)*CFrame.Angles(0,h.ry or 0,0)
+ pcall(function() hrp.AssemblyLinearVelocity=Vector3.zero end)
+ notify(tr("h_tp_ok"),C.acc,true)
+ return true
+end
+
+-- Eier-Liste (fuer die Anzahl-Seite: eine Zeile pro Sorte)
 local function buildEggList(parent,onClick)
  local rows={}
  for i,ty in ipairs(TYPES) do
@@ -1528,11 +1635,11 @@ local function updateEggList(rows,query,onlyFound,sortCount)
 end
 
 --// =========================================================
---// NAVIGATION  (Einstellungen ganz unten)
+--// NAVIGATION  (Home + Einstellungen ganz unten)
 --// =========================================================
-local PAGES={"start","esp","count","teleport","visuals","notifier","player","perf","tools","farm","settings"}
+local PAGES={"start","esp","count","teleport","visuals","notifier","player","perf","tools","farm","home","settings"}
 local pages,navBtns={}, {}
-local NAV_Y0,NAV_STEP,NAV_H,NAV_IND=10,28,25,4
+local NAV_Y0,NAV_STEP,NAV_H,NAV_IND=10,26,23,3
 
 local indicator=new("Frame",{Size=UDim2.fromOffset(3,17),Position=UDim2.fromOffset(0,NAV_Y0+NAV_IND),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0},side)
 round(indicator,2)
@@ -1595,11 +1702,12 @@ onLang(refreshHint)
 
 --// =========================================================
 --// SEITEN
+--// (v3.3.1: Start- und Teleport-Seite sind eigene Funktionen -> eigenes 200er-Register-Limit)
 --// =========================================================
 
 --// ---------------- START ----------------
 local updateStart
-do
+;(function()
  local sp=scroller(newPage("start"))
 
  -- Hero
@@ -1810,7 +1918,7 @@ do
    task.wait(0.5)
   end
  end)
-end
+end)()
 
 --// ---------------- ESP ----------------
 do
@@ -1923,10 +2031,13 @@ do
  end
 end
 
---// ---------------- TELEPORT (zu einem gewaehlten Ei) ----------------
-do
+--// ---------------- TELEPORT (JEDES Ei einzeln, mit Suche, Position + Meter) ----------------
+;(function()
+ local MAXROWS=400
  local tpg=newPage("teleport")
- local search=new("TextBox",{Size=UDim2.new(1,-28,0,34),Position=UDim2.fromOffset(14,12),BackgroundColor3=C.item,Text="",PlaceholderColor3=C.sub,
+
+ -- Suche + Sortier-Knopf
+ local search=new("TextBox",{Size=UDim2.new(1,-150,0,34),Position=UDim2.fromOffset(14,12),BackgroundColor3=C.item,Text="",PlaceholderColor3=C.sub,
   TextColor3=C.txt,Font=Enum.Font.GothamMedium,TextSize=13,ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left},tpg)
  reg(search,"esp_search","PlaceholderText")
  round(search,10)
@@ -1935,44 +2046,133 @@ do
  search.Focused:Connect(function() tw(ss,{Color=C.acc,Transparency=0}) end)
  search.FocusLost:Connect(function() tw(ss,{Color=C.border,Transparency=0.3}) end)
 
+ local sortBtn=makeButton(tpg,"tp_sort_luck",Color3.fromRGB(70,74,100),nil)
+ sortBtn.Size=UDim2.fromOffset(108,34)
+ sortBtn.Position=UDim2.new(1,-122,0,12)
+ local function refreshSort() sortBtn.Text=tr(S.tpSort==2 and "tp_sort_dist" or "tp_sort_luck") end
+ onLang(refreshSort)
+ sortBtn.MouseButton1Click:Connect(function()
+  S.tpSort=(S.tpSort==2) and 1 or 2
+  save()
+  refreshSort()
+  pcall(updateTeleport)
+ end)
+
+ -- Schnell-Teleports
  local btns=new("Frame",{Size=UDim2.new(1,-28,0,34),Position=UDim2.fromOffset(14,54),BackgroundTransparency=1},tpg)
- new("UIGridLayout",{CellSize=UDim2.new(0.5,-4,1,0),CellPadding=UDim2.fromOffset(8,0),SortOrder=Enum.SortOrder.LayoutOrder},btns)
+ new("UIGridLayout",{CellSize=UDim2.new(1/3,-6,1,0),CellPadding=UDim2.fromOffset(8,0),SortOrder=Enum.SortOrder.LayoutOrder},btns)
 
  local status=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,14,1,-38),Size=UDim2.new(1,-28,0,32),Text="",
   TextColor3=C.sub,Font=Enum.Font.Gotham,TextSize=11,TextWrapped=true,TextTruncate=Enum.TextTruncate.AtEnd,
   TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top},tpg)
- reg(status,"tp_status")
+ local msgUntil=0
+ local function setStatus(t) status.Text=t msgUntil=tick()+3 end
 
  makeButton(btns,"tp_egg","acc",function()
   local e=nearestEgg(true)
   if not e then e=nearestEgg(false) end
-  if tpTo(e) then status.Text=trf("tp_ok",TYPES[e.ti].name) end
+  if tpTo(e) then setStatus(trf("tp_ok",TYPES[e.ti].name)) end
  end,1)
  makeButton(btns,"tp_rare",Color3.fromRGB(90,60,200),function()
   local e=rarestEgg()
-  if tpTo(e) then status.Text=trf("tp_ok",TYPES[e.ti].name) end
+  if tpTo(e) then setStatus(trf("tp_ok",TYPES[e.ti].name)) end
  end,2)
+ makeButton(btns,"tp_home",Color3.fromRGB(40,150,100),function()
+  if tpHome() then setStatus(tr("h_tp_ok")) end
+ end,3)
 
+ -- Liste
  local list=new("ScrollingFrame",{Size=UDim2.new(1,-28,1,-146),Position=UDim2.fromOffset(14,98),BackgroundTransparency=1,BorderSizePixel=0,
   ScrollBarThickness=3,ScrollBarImageColor3=C.acc,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y},tpg)
  new("UIListLayout",{Padding=UDim.new(0,6),SortOrder=Enum.SortOrder.LayoutOrder},list)
  new("UIPadding",{PaddingRight=UDim.new(0,6)},list)
 
- local rows=buildEggList(list,function(i)
-  local _,ne=eggStats()
-  local e=ne[i]
-  if e then
-   if tpTo(e) then status.Text=trf("tp_ok",TYPES[i].name) end
-  else
-   local msg=trf("tp_none_type",TYPES[i].name)
-   status.Text=msg
-   notify(msg,C.bad,true)
-  end
- end)
- updateTeleport=function()
-  updateEggList(rows,string.lower(search.Text),false,false)
+ local rowPool,rowKey={}, {}
+ local function getRow(i)
+  local r=rowPool[i]
+  if r then return r end
+  local row=new("TextButton",{Size=UDim2.new(1,0,0,42),BackgroundColor3=C.item,Text="",AutoButtonColor=false,Visible=false,LayoutOrder=i},list)
+  round(row,9)
+  local rs=stroke(row,C.border,0.4)
+  local bar=new("Frame",{Size=UDim2.fromOffset(3,24),Position=UDim2.fromOffset(0,9),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0},row,true)
+  round(bar,2)
+  local nm=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(14,3),Size=UDim2.new(1,-150,0,18),Text="",TextColor3=C.txt,
+   Font=Enum.Font.GothamBold,TextSize=12,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},row)
+  local sub=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(14,21),Size=UDim2.new(1,-150,0,16),Text="",TextColor3=C.sub,
+   Font=Enum.Font.Gotham,TextSize=10,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},row)
+  local dist=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(1,-130,0,0),Size=UDim2.fromOffset(118,42),Text="-",TextColor3=C.acc2,
+   Font=Enum.Font.GothamBlack,TextSize=13,TextXAlignment=Enum.TextXAlignment.Right},row)
+  r={row=row,nm=nm,sub=sub,dist=dist,bar=bar,rs=rs,color=Color3.new(1,1,1)}
+  row.MouseEnter:Connect(function() tw(row,{BackgroundColor3=C.hover}) tw(rs,{Color=r.color,Transparency=0.1}) end)
+  row.MouseLeave:Connect(function() tw(row,{BackgroundColor3=C.item}) tw(rs,{Color=C.border,Transparency=0.4}) end)
+  row.MouseButton1Click:Connect(function()
+   local k=rowKey[i]
+   local e=k and lastTargets[k]
+   if e then
+    if tpTo(e) then setStatus(trf("tp_ok",TYPES[e.ti].name)) end
+   else
+    notify(tr("tp_gone"),C.bad,true)
+   end
+  end)
+  rowPool[i]=r
+  return r
  end
-end
+
+ updateTeleport=function()
+  local c=P.Character
+  local hrp=c and c:FindFirstChild("HumanoidRootPart")
+  local rp=hrp and hrp.Position
+  local q=string.lower(search.Text)
+  local items,total={}, 0
+  for k,e in pairs(lastTargets) do
+   total=total+1
+   local ty=TYPES[e.ti]
+   if q=="" or string.find(string.lower(ty.name),q,1,true) then
+    items[#items+1]={k=k,e=e,d=rp and (e.pos-rp).Magnitude or math.huge}
+   end
+  end
+  if S.tpSort==2 then
+   table.sort(items,function(a,b)
+    if a.d~=b.d then return a.d<b.d end
+    return a.k<b.k
+   end)
+  else
+   table.sort(items,function(a,b)
+    if a.e.ti~=b.e.ti then return a.e.ti>b.e.ti end
+    if a.d~=b.d then return a.d<b.d end
+    return a.k<b.k
+   end)
+  end
+  local shown=math.min(#items,MAXROWS)
+  for i=1,shown do
+   local it=items[i]
+   local e=it.e
+   local ty=TYPES[e.ti]
+   local r=getRow(i)
+   rowKey[i]=it.k
+   r.row.Visible=true
+   r.row.LayoutOrder=i
+   r.color=ty.color
+   r.bar.BackgroundColor3=ty.color
+   r.nm.Text=ty.name
+   local s=string.format("Luck %s  •  X %d  Y %d  Z %d",ty.luck,math.floor(e.pos.X),math.floor(e.pos.Y),math.floor(e.pos.Z))
+   if not e.live then s=s.."  •  "..tr("ghost_tag") end
+   r.sub.Text=s
+   r.dist.Text=(it.d<math.huge) and (math.floor(it.d).." m") or "-"
+  end
+  for i=shown+1,#rowPool do
+   rowPool[i].row.Visible=false
+   rowKey[i]=nil
+  end
+  if tick()>msgUntil then
+   if total==0 then status.Text=tr("c_empty")
+   else status.Text=trf("tp_count",shown,total).."\n"..tr("tp_status") end
+  end
+ end
+
+ conn(search:GetPropertyChangedSignal("Text"):Connect(function() pcall(updateTeleport) end))
+ onLang(function() pcall(updateTeleport) end)
+end)()
 
 task.spawn(function()
  while alive do
@@ -2516,6 +2716,75 @@ do
  end)
 end
 
+--// ---------------- HOME / PLOT (neu in v3.3) ----------------
+do
+ local hp=scroller(newPage("home"))
+ local marker={part=nil,bb=nil,lb=nil}
+
+ local function destroyMarker()
+  if marker.bb then pcall(function() marker.bb:Destroy() end) marker.bb=nil end
+  if marker.part then pcall(function() marker.part:Destroy() end) marker.part=nil end
+  marker.lb=nil
+ end
+ local function refreshMarker()
+  destroyMarker()
+  local h=getHome()
+  if not alive or not h or not S.homeMarker then return end
+  pcall(function()
+   marker.part=raw("Part",{Name="AntonioHome",Anchored=true,CanCollide=false,CanQuery=false,CanTouch=false,Transparency=1,
+    Size=Vector3.new(1,1,1),CFrame=CFrame.new(h.x,h.y,h.z)},workspace)
+   marker.bb=raw("BillboardGui",{Adornee=marker.part,AlwaysOnTop=true,Size=UDim2.fromOffset(200,40),StudsOffset=Vector3.new(0,3,0),
+    MaxDistance=math.huge,LightInfluence=0,ResetOnSpawn=false},gui)
+   marker.lb=raw("TextLabel",{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,TextColor3=Color3.fromRGB(255,215,70),
+    TextStrokeTransparency=0,Font=Enum.Font.GothamBold,TextSize=16,Text="Home"},marker.bb)
+  end)
+ end
+
+ head(hp,"h_head")
+ local info=infoCard(hp,"h_cur",nil)
+ local function refreshInfo()
+  local h=getHome()
+  if not h then info.Text=tr("h_none") return end
+  local c=P.Character
+  local hrp=c and c:FindFirstChild("HumanoidRootPart")
+  if hrp then
+   local d=(Vector3.new(h.x,h.y,h.z)-hrp.Position).Magnitude
+   info.Text=trf("h_pos",math.floor(h.x),math.floor(h.y),math.floor(h.z),math.floor(d))
+  else
+   info.Text=trf("h_pos_nodist",math.floor(h.x),math.floor(h.y),math.floor(h.z))
+  end
+ end
+ onLang(refreshInfo)
+
+ makeButton(hp,"h_set","acc",function() setHome() end)
+ makeButton(hp,"h_tp",Color3.fromRGB(90,60,200),function() tpHome() end)
+ makeButton(hp,"h_clear","bad",function() clearHome() end)
+ makeToggle(hp,"h_marker","h_marker_sub",S.homeMarker,function(v) S.homeMarker=v save() refreshMarker() end)
+ makeLabelBox(hp,canFile and "h_info" or "h_info_na",nil,44)
+
+ homeFns[#homeFns+1]=refreshInfo
+ homeFns[#homeFns+1]=refreshMarker
+ refreshMarker()
+
+ task.spawn(function()
+  while alive do
+   if cur=="home" then pcall(refreshInfo) end
+   local h=getHome()
+   if h and marker.lb and marker.lb.Parent then
+    local c=P.Character
+    local hrp=c and c:FindFirstChild("HumanoidRootPart")
+    if hrp then
+     local d=(Vector3.new(h.x,h.y,h.z)-hrp.Position).Magnitude
+     marker.lb.Text="Home  •  "..math.floor(d).." m"
+    end
+   end
+   task.wait(0.3)
+  end
+ end)
+
+ restorers[#restorers+1]=function() destroyMarker() end
+end
+
 --// ---------------- EINSTELLUNGEN (ganz unten) ----------------
 do
  local sp=scroller(newPage("settings"))
@@ -2604,6 +2873,7 @@ do
   return FAMILIES[S.espFont].n
  end)
  makeToggle(sp,"s_ghost","s_ghost_sub",S.ghost,function(v) S.ghost=v save() if not v then clearGhosts() end end)
+ makeToggle(sp,"s_names","s_names_sub",S.nameScan,function(v) S.nameScan=v save() end)
  makeToggle(sp,"s_tracer","s_tracer_sub",S.tracers,function(v) S.tracers=v save() end)
  makeSegment(sp,"s_torigin",{"o_bottom","o_center","o_top"},S.tracerOrigin,function(i) S.tracerOrigin=i save() end)
  makeSlider(sp,"s_tw",1,5,1,S.tracerW,function(v) S.tracerW=v save() end)
@@ -2780,4 +3050,4 @@ closeHub=function()
 end
 closeB.MouseButton1Click:Connect(function() closeHub() end)
 
-print("Antonio Hub v3.2 geladen")
+print("Antonio Hub v3.3.1 geladen")
