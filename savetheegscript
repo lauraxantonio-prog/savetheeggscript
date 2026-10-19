@@ -1,6 +1,6 @@
---// ANTONIO HUB v3.3.1  (Start | ESP | Anzahl | Teleport | Visuals | Notifier | Spieler | Performance | Tools | Autofarm | Home | Einstellungen)
---// v3.3.1: FIX "Out of local registers ... exceeded limit 200" (Start- und Teleport-Seite laufen jetzt in eigenen Funktionen)
---// v3.3: ESP-Fix fuer andere Spieler (Eier standardmaessig AN + Namens-Erkennung als Fallback), Teleport-Seite listet JEDES Ei einzeln (Suche, Position, Meter), neuer Home-Bereich
+--// ANTONIO HUB v3.4  (Start | ESP | Anzahl | Teleport | Visuals | Notifier | Spieler | Performance | Tools | Autofarm | Home | Einstellungen)
+--// v3.4: ESP-Text kompakt: nur Name, Entfernung (m) und Hoehe ("H 7.0"), kleinere Schrift, kein Luck, kein "gemerkt"-Hinweis
+--// v3.3.1: FIX "Out of local registers ... exceeded limit 200" (Start- und Teleport-Seite laufen in eigenen Funktionen)
 local Players=game:GetService("Players")
 local RS=game:GetService("RunService")
 local UIS=game:GetService("UserInputService")
@@ -29,13 +29,15 @@ local canFile=(type(writefile)=="function" and type(readfile)=="function" and ty
 local S={
  lang="de",theme=1,accent=1,custom=false,accR=124,accG=92,accB=255,
  font=1,espFont=1,uiScale=100,anim=true,borderAnim=true,menuKey="RightControl",
- espOn=true,hl=true,fill=0.2,pulse=true,showName=true,showLuck=true,showDist=true,showSize=true,
- textSize=16,maxDist=0,ghost=true,sweepR=3000,tracers=true,tracerOrigin=1,tracerW=2,
+ espOn=true,hl=true,fill=0.2,pulse=true,showName=true,showLuck=false,showDist=true,showSize=true,
+ textSize=12,maxDist=0,ghost=true,sweepR=3000,tracers=true,tracerOrigin=1,tracerW=2,
  notifyMin=15,notifySound=false,toastTime=4,eggs={},
  -- neu in v3.1
  tpHeight=5,scanInt=10,shortNames=false,hlOutline=true,showTips=true,countOnlyFound=true,countSort=1,
  -- neu in v3.3
  eggsInit=false,nameScan=true,tpSort=1,homeMarker=true,homes={},
+ -- neu in v3.4
+ espv=0,
 }
 do
  if canFile then
@@ -48,6 +50,14 @@ do
    end
   end)
  end
+end
+-- v3.4 Migration: alte Einstellungen bekommen die kompakte ESP-Darstellung
+if S.espv<2 then
+ S.textSize=12
+ S.showLuck=false
+ S.showDist=true
+ S.showSize=true
+ S.espv=2
 end
 local noSave,saveQueued=false,false
 local function save()
@@ -102,8 +112,7 @@ local TYPES={
  {name="Galaxy Egg",      text="galaxy egg",      luck="20B",  color=Color3.fromRGB(170,90,255)},
  {name="Demon Egg",       text="demon egg",       luck="200B", color=Color3.fromRGB(190,20,20)},
 }
--- v3.3 FIX: Neue Spieler hatten KEINE Ei-Sorte aktiv (leere Einstellungsdatei) und sahen deshalb 0 Eier.
--- Beim allerersten Start sind jetzt alle Sorten AN.
+-- Beim allerersten Start sind alle Sorten AN.
 if not S.eggsInit and next(S.eggs)==nil then
  for _,ty in ipairs(TYPES) do S.eggs[ty.text]=true end
 end
@@ -284,7 +293,7 @@ add("s_hl","Highlight","Highlight") add("s_hl_sub","Farbige Füllung der Eier (B
 add("s_hlo","Highlight-Umriss","Highlight outline") add("s_hlo_sub","Weißer Rand um die Eier","White outline around eggs")
 add("s_fill","Highlight-Transparenz","Highlight transparency")
 add("s_pulse","Pulsieren","Pulse") add("s_pulse_sub","Highlight blinkt sanft","Highlight fades softly in and out")
-add("s_name","Name anzeigen","Show name") add("s_luck","Luck anzeigen","Show luck") add("s_dist","Entfernung anzeigen","Show distance") add("s_size","Größe anzeigen","Show size")
+add("s_name","Name anzeigen","Show name") add("s_luck","Luck anzeigen","Show luck") add("s_dist","Entfernung anzeigen","Show distance") add("s_size","Höhe anzeigen (H)","Show height (H)")
 add("s_short","Kurze Namen","Short names") add("s_short_sub","„Egg“ im ESP-Text weglassen","Drop “Egg” in the ESP text")
 add("size","Größe","Size")
 add("s_tsize","ESP-Textgröße","ESP text size") add("s_efont","ESP-Schriftart","ESP font")
@@ -491,7 +500,7 @@ local eggRows={}
 local main
 
 --// =========================================================
---// ESP KERN  (Fix: Eier verschwinden nicht mehr)
+--// ESP KERN
 --// =========================================================
 local prompts,marks,named={}, {}, {}
 local lastCounts,allCounts,lastTargets={}, {}, {}
@@ -499,7 +508,6 @@ local scanning=false
 local notified={}
 local HL_MAX=28 -- Roblox zeigt nur ca. 31 Highlights gleichzeitig; alle weiteren Eier bekommen eine Box
 
--- Text normalisieren: Kleinbuchstaben, Tags weg, "&" = "and", nur Buchstaben/Zahlen
 local typeOfPrompt,targetOf,sizeOf,partOf,addPrompt
 do
 local function norm(s)
@@ -594,7 +602,6 @@ function targetOf(p,now)
  return best,base
 end
 
--- v3.3: Prompts sammeln + (Fallback) Objekte, die exakt wie ein Ei heissen
 function addPrompt(o)
  if o:IsA("ProximityPrompt") then prompts[o]=true return end
  if o:IsA("Model") or (o:IsA("BasePart") and not o:IsA("Terrain")) then
@@ -643,8 +650,6 @@ local function getFolder()
  return ghostFolder
 end
 
--- Markierung: live (echtes Ei) oder "Geist" (Ei ist aus der Streaming-Reichweite, Position wird gemerkt)
--- Jede Markierung hat zusaetzlich eine Box (kein 31er-Limit, keine Distanzgrenze)
 local function mark(k,e)
  local ty=TYPES[e.ti]
  local obj=e.obj
@@ -659,7 +664,6 @@ local function mark(k,e)
   if not ghostPart then return end
   part=ghostPart
  end
- -- Boxgroesse: echte Groesse des Eis (bei Geistern die gemerkte Groesse)
  local boxSize=Vector3.new(2,2,2)
  if obj then
   local sz=sizeOf(obj)
@@ -674,9 +678,9 @@ local function mark(k,e)
    hl=raw("Highlight",{Adornee=obj,FillColor=ty.color,OutlineColor=Color3.new(1,1,1),DepthMode=Enum.HighlightDepthMode.AlwaysOnTop,Enabled=false},gui)
   end
   box=raw("BoxHandleAdornment",{Adornee=part,AlwaysOnTop=true,ZIndex=10,Size=boxSize,Color3=ty.color,Transparency=0.5,Visible=false},gui)
-  bb=raw("BillboardGui",{Adornee=part,AlwaysOnTop=true,Size=UDim2.fromOffset(260,110),StudsOffset=Vector3.new(0,4,0),MaxDistance=math.huge,
+  bb=raw("BillboardGui",{Adornee=part,AlwaysOnTop=true,Size=UDim2.fromOffset(200,56),StudsOffset=Vector3.new(0,3,0),MaxDistance=math.huge,
    DistanceLowerLimit=0,LightInfluence=0,ResetOnSpawn=false},gui)
-  lb=raw("TextLabel",{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,TextColor3=ty.color,TextStrokeTransparency=0,Font=espFontEnum(),TextSize=S.textSize,Text=ty.name},bb)
+  lb=raw("TextLabel",{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,TextColor3=ty.color,TextStrokeTransparency=0.2,Font=espFontEnum(),TextSize=S.textSize,Text=ty.name},bb)
  end)
  if not ok then
   if hl then pcall(function() hl:Destroy() end) end
@@ -693,7 +697,6 @@ local function mark(k,e)
  marks[k]={hl=hl,box=box,bb=bb,lb=lb,line=line,part=part,ghostPart=ghostPart,obj=obj,ghost=(obj==nil),big=e.big or 0,ti=e.ti,allow=true,d=0}
 end
 
--- gehoert das Objekt zu einem Spieler-Charakter? (dann kein Ei, sondern z.B. getragenes Item)
 local function inPlayer(o)
  for _,pl in ipairs(Players:GetPlayers()) do
   local ch=pl.Character
@@ -721,7 +724,6 @@ local function updateTargets()
    end
   end
  end
- -- v3.3 Fallback: findet das Spiel ueber Prompts nichts, werden Objekte genommen, die exakt wie ein Ei heissen
  if #items==0 and S.nameScan then
   for o,ti in pairs(named) do
    if not o.Parent then
@@ -760,7 +762,6 @@ local function updateTargets()
    final[best]=g[1].ti
   end
  end
- -- Live-Eier in den Cache schreiben (Cache = bekannte Eier inkl. entfernter)
  local seen={}
  for t,ti in pairs(final) do
   local pt=partOf(t)
@@ -793,7 +794,6 @@ local function updateTargets()
    seen[k]=true
   end
  end
- -- nicht gesehene Eier: zu "Geistern" machen oder verwerfen
  local en,sr=streamingInfo()
  local rem=sr*0.6
  for k,e in pairs(cache) do
@@ -839,7 +839,6 @@ local function clearGhosts()
  pcall(updateTargets)
 end
 
--- Fern-Scan: laedt die Map rasterweise nach (Player:RequestStreamAroundAsync) und merkt sich alle Eier
 local function runSweep(radius,onProg,onDone)
  if sweeping then return false end
  local c=P.Character
@@ -928,7 +927,6 @@ local function nearestEgg(onlyOn)
  return be,bd
 end
 
--- pro Sorte: naechstes Ei + Entfernung
 local function eggStats()
  local c=P.Character
  local hrp=c and c:FindFirstChild("HumanoidRootPart")
@@ -1467,7 +1465,6 @@ local function bigCard(parent,titleKey,order)
  return v,s
 end
 
--- kleine Kennzahl-Kachel (Start-Seite)
 local function makeChip(parent,key)
  local f=new("Frame",{BackgroundColor3=C.item,LayoutOrder=ord(parent)},parent)
  round(f,10)
@@ -1537,7 +1534,6 @@ local function notify(text,col,silent)
  end)
 end
 
--- Teleport zu einem Ei (Eintrag aus lastTargets)
 local function tpTo(e)
  local c=P.Character
  local hrp=c and c:FindFirstChild("HumanoidRootPart")
@@ -1552,7 +1548,6 @@ local function tpTo(e)
 end
 
 --// ---------------- HOME KERN (Plot / Base) ----------------
--- Wird pro Spiel (PlaceId) gespeichert: Position + Blickrichtung
 local homeKey=tostring(game.PlaceId)
 local homeFns={}
 local function getHome()
@@ -1593,7 +1588,6 @@ local function tpHome()
  return true
 end
 
--- Eier-Liste (fuer die Anzahl-Seite: eine Zeile pro Sorte)
 local function buildEggList(parent,onClick)
  local rows={}
  for i,ty in ipairs(TYPES) do
@@ -1635,7 +1629,7 @@ local function updateEggList(rows,query,onlyFound,sortCount)
 end
 
 --// =========================================================
---// NAVIGATION  (Home + Einstellungen ganz unten)
+--// NAVIGATION
 --// =========================================================
 local PAGES={"start","esp","count","teleport","visuals","notifier","player","perf","tools","farm","home","settings"}
 local pages,navBtns={}, {}
@@ -1702,7 +1696,6 @@ onLang(refreshHint)
 
 --// =========================================================
 --// SEITEN
---// (v3.3.1: Start- und Teleport-Seite sind eigene Funktionen -> eigenes 200er-Register-Limit)
 --// =========================================================
 
 --// ---------------- START ----------------
@@ -1710,7 +1703,6 @@ local updateStart
 ;(function()
  local sp=scroller(newPage("start"))
 
- -- Hero
  local wc=new("Frame",{Size=UDim2.new(1,0,0,92),BackgroundColor3=C.item,LayoutOrder=ord(sp),ClipsDescendants=true},sp)
  round(wc,12)
  local wst=stroke(wc,C.acc,0.5)
@@ -1745,7 +1737,6 @@ local updateStart
   end
  end)
 
- -- Kennzahlen
  local chipGrid=new("Frame",{Size=UDim2.new(1,0,0,50),BackgroundTransparency=1,LayoutOrder=ord(sp)},sp)
  new("UIGridLayout",{CellSize=UDim2.new(0.25,-7,0,50),CellPadding=UDim2.fromOffset(9,9),SortOrder=Enum.SortOrder.LayoutOrder},chipGrid)
  local chFps=makeChip(chipGrid,"chip_fps")
@@ -1771,7 +1762,6 @@ local updateStart
  makeButton(qgrid,"rescan",Color3.fromRGB(90,60,200),function() fullScan(true) end,2)
  makeButton(qgrid,"hop",Color3.fromRGB(40,100,170),serverHop,3)
 
- -- Top-Funde (mit Balken)
  head(sp,"st_found")
  local topBox=new("Frame",{Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundColor3=C.item,LayoutOrder=ord(sp)},sp)
  round(topBox,10) stroke(topBox,C.border,0.3)
@@ -1857,7 +1847,6 @@ local updateStart
    end
   end
   wInfo.Text=trf("hero_info",total,types)
-  -- seltenstes Ei
   if rareI then
    local rd
    if hrp then
@@ -1875,7 +1864,6 @@ local updateStart
   else
    vRare.Text="-" vRare.TextColor3=C.txt sRare.Text=""
   end
-  -- naechstes aktives Ei
   local ne,nd=nearestEgg(true)
   if ne then
    vNear.Text=short(ne.ti)
@@ -1884,10 +1872,8 @@ local updateStart
   else
    vNear.Text="-" vNear.TextColor3=C.txt sNear.Text=tr("near_none")
   end
-  -- gesamt
   vTot.Text=trf("total_val",total)
   sTot.Text=trf("total_sub",markCount(),types)
-  -- Top-Funde
   local idx={}
   for i,n in pairs(allCounts) do if n>0 then idx[#idx+1]=i end end
   table.sort(idx,function(a,b) return a>b end)
@@ -2011,7 +1997,7 @@ do
  setEspStatus=function(t) espStatus.Text=t end
 end
 
---// ---------------- ANZAHL (wie viele Eier jeder Sorte im Server sind) ----------------
+--// ---------------- ANZAHL ----------------
 do
  local cp=scroller(newPage("count"))
  head(cp,"c_head")
@@ -2031,12 +2017,11 @@ do
  end
 end
 
---// ---------------- TELEPORT (JEDES Ei einzeln, mit Suche, Position + Meter) ----------------
+--// ---------------- TELEPORT ----------------
 ;(function()
  local MAXROWS=400
  local tpg=newPage("teleport")
 
- -- Suche + Sortier-Knopf
  local search=new("TextBox",{Size=UDim2.new(1,-150,0,34),Position=UDim2.fromOffset(14,12),BackgroundColor3=C.item,Text="",PlaceholderColor3=C.sub,
   TextColor3=C.txt,Font=Enum.Font.GothamMedium,TextSize=13,ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left},tpg)
  reg(search,"esp_search","PlaceholderText")
@@ -2058,7 +2043,6 @@ end
   pcall(updateTeleport)
  end)
 
- -- Schnell-Teleports
  local btns=new("Frame",{Size=UDim2.new(1,-28,0,34),Position=UDim2.fromOffset(14,54),BackgroundTransparency=1},tpg)
  new("UIGridLayout",{CellSize=UDim2.new(1/3,-6,1,0),CellPadding=UDim2.fromOffset(8,0),SortOrder=Enum.SortOrder.LayoutOrder},btns)
 
@@ -2081,7 +2065,6 @@ end
   if tpHome() then setStatus(tr("h_tp_ok")) end
  end,3)
 
- -- Liste
  local list=new("ScrollingFrame",{Size=UDim2.new(1,-28,1,-146),Position=UDim2.fromOffset(14,98),BackgroundTransparency=1,BorderSizePixel=0,
   ScrollBarThickness=3,ScrollBarImageColor3=C.acc,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y},tpg)
  new("UIListLayout",{Padding=UDim.new(0,6),SortOrder=Enum.SortOrder.LayoutOrder},list)
@@ -2639,7 +2622,6 @@ do
   end
  end)
 
- -- Respawn
  head(tp,"t_char")
  local function respawn(keepPos)
   local c=P.Character
@@ -2716,7 +2698,7 @@ do
  end)
 end
 
---// ---------------- HOME / PLOT (neu in v3.3) ----------------
+--// ---------------- HOME / PLOT ----------------
 do
  local hp=scroller(newPage("home"))
  local marker={part=nil,bb=nil,lb=nil}
@@ -2736,7 +2718,7 @@ do
    marker.bb=raw("BillboardGui",{Adornee=marker.part,AlwaysOnTop=true,Size=UDim2.fromOffset(200,40),StudsOffset=Vector3.new(0,3,0),
     MaxDistance=math.huge,LightInfluence=0,ResetOnSpawn=false},gui)
    marker.lb=raw("TextLabel",{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,TextColor3=Color3.fromRGB(255,215,70),
-    TextStrokeTransparency=0,Font=Enum.Font.GothamBold,TextSize=16,Text="Home"},marker.bb)
+    TextStrokeTransparency=0,Font=Enum.Font.GothamBold,TextSize=14,Text="Home"},marker.bb)
   end)
  end
 
@@ -2785,7 +2767,7 @@ do
  restorers[#restorers+1]=function() destroyMarker() end
 end
 
---// ---------------- EINSTELLUNGEN (ganz unten) ----------------
+--// ---------------- EINSTELLUNGEN ----------------
 do
  local sp=scroller(newPage("settings"))
  local customToggle
@@ -2866,7 +2848,7 @@ do
  makeToggle(sp,"s_luck",nil,S.showLuck,function(v) S.showLuck=v save() end)
  makeToggle(sp,"s_dist",nil,S.showDist,function(v) S.showDist=v save() end)
  makeToggle(sp,"s_size",nil,S.showSize,function(v) S.showSize=v save() end)
- makeSlider(sp,"s_tsize",10,30,1,S.textSize,function(v) S.textSize=v save() end)
+ makeSlider(sp,"s_tsize",8,30,1,S.textSize,function(v) S.textSize=v save() end)
  makeStepper(sp,"s_efont",FAMILIES[S.espFont].n,function(dir)
   S.espFont=((S.espFont-1+dir)%#FAMILIES)+1
   save()
@@ -2901,7 +2883,7 @@ end
 --// =========================================================
 env.__ANTONIO_T0=tick()
 
--- Render-Loop: ESP-Anzeige
+-- Render-Loop: ESP-Anzeige (v3.4: kompakter Text = Name / "123 m  H 7.0")
 do
  local textT=0
  conn(RS.RenderStepped:Connect(function()
@@ -2934,7 +2916,6 @@ do
       m.hl.OutlineTransparency=S.hlOutline and 0 or 1
      end
     end
-    -- Box: Ersatz fuer alles ohne Highlight (ueber dem 28er-Limit, gemerkte Geister)
     if m.box then
      local needBox=(not m.hl) or (not m.allow)
      m.box.Visible=show and S.hl and needBox
@@ -2949,9 +2930,10 @@ do
       local lines={}
       if S.showName then lines[#lines+1]=S.shortNames and (ty.name:gsub(" Egg","")) or ty.name end
       if S.showLuck then lines[#lines+1]="Luck "..ty.luck end
-      if S.showDist then lines[#lines+1]=math.floor(d).." m" end
-      if S.showSize then lines[#lines+1]=tr("size")..": "..string.format("%.1f",m.big).." studs" end
-      if m.ghost then lines[#lines+1]=tr("ghost_tag") end
+      local info={}
+      if S.showDist then info[#info+1]=math.floor(d).." m" end
+      if S.showSize then info[#info+1]="H "..string.format("%.1f",m.big) end
+      if #info>0 then lines[#lines+1]=table.concat(info,"  ") end
       m.lb.Text=table.concat(lines,"\n")
      end
     end
@@ -3050,4 +3032,4 @@ closeHub=function()
 end
 closeB.MouseButton1Click:Connect(function() closeHub() end)
 
-print("Antonio Hub v3.3.1 geladen")
+print("Antonio Hub v3.4 geladen")
