@@ -1,4 +1,5 @@
---// ANTONIO HUB v3.1  (Start | ESP | Anzahl | Teleport | Visuals | Notifier | Spieler | Performance | Tools | Autofarm | Einstellungen)
+--// ANTONIO HUB v3.2  (Start | ESP | Anzahl | Teleport | Visuals | Notifier | Spieler | Performance | Tools | Autofarm | Einstellungen)
+--// v3.2: Box-Markierung ohne 31er-Highlight-Limit (ueberzaehlige Eier + gemerkte "Geister" bleiben immer sichtbar), Label ohne Distanzgrenze
 local Players=game:GetService("Players")
 local RS=game:GetService("RunService")
 local UIS=game:GetService("UserInputService")
@@ -247,7 +248,7 @@ add("s_tips","Tipps anzeigen","Show tips") add("s_tips_sub","Tipp-Karte auf der 
 add("s_center","Menü zentrieren","Center menu")
 add("s_key","Menü-Taste: %s","Menu key: %s") add("s_key_wait","Taste drücken... (Esc = abbrechen)","Press a key... (Esc = cancel)")
 add("s_esp","ESP-Darstellung","ESP appearance")
-add("s_hl","Highlight","Highlight") add("s_hl_sub","Farbige Füllung der Eier","Colored fill on eggs")
+add("s_hl","Highlight","Highlight") add("s_hl_sub","Farbige Füllung der Eier (Box-Ersatz ab 28 Eiern)","Colored fill on eggs (box fallback beyond 28 eggs)")
 add("s_hlo","Highlight-Umriss","Highlight outline") add("s_hlo_sub","Weißer Rand um die Eier","White outline around eggs")
 add("s_fill","Highlight-Transparenz","Highlight transparency")
 add("s_pulse","Pulsieren","Pulse") add("s_pulse_sub","Highlight blinkt sanft","Highlight fades softly in and out")
@@ -462,7 +463,7 @@ local prompts,marks={}, {}
 local lastCounts,allCounts,lastTargets={}, {}, {}
 local scanning=false
 local notified={}
-local HL_MAX=28 -- Roblox zeigt nur ca. 31 Highlights gleichzeitig
+local HL_MAX=28 -- Roblox zeigt nur ca. 31 Highlights gleichzeitig; alle weiteren Eier bekommen eine Box
 
 -- Text normalisieren: Kleinbuchstaben, Tags weg, "&" = "and", nur Buchstaben/Zahlen
 local typeOfPrompt,targetOf,sizeOf,partOf,addPrompt
@@ -584,6 +585,7 @@ local function unmark(k)
  local m=marks[k]
  if not m then return end
  pcall(function() if m.hl then m.hl:Destroy() end end)
+ pcall(function() if m.box then m.box:Destroy() end end)
  pcall(function() m.bb:Destroy() end)
  pcall(function() if m.ghostPart then m.ghostPart:Destroy() end end)
  if m.line then pcall(function() m.line:Remove() end) end
@@ -599,6 +601,7 @@ local function getFolder()
 end
 
 -- Markierung: live (echtes Ei) oder "Geist" (Ei ist aus der Streaming-Reichweite, Position wird gemerkt)
+-- Jede Markierung hat zusaetzlich eine Box (kein 31er-Limit, keine Distanzgrenze)
 local function mark(k,e)
  local ty=TYPES[e.ti]
  local obj=e.obj
@@ -613,16 +616,28 @@ local function mark(k,e)
   if not ghostPart then return end
   part=ghostPart
  end
- local hl,bb,lb
+ -- Boxgroesse: echte Groesse des Eis (bei Geistern die gemerkte Groesse)
+ local boxSize=Vector3.new(2,2,2)
+ if obj then
+  local sz=sizeOf(obj)
+  if sz then boxSize=sz+Vector3.new(0.2,0.2,0.2) end
+ elseif e.big and e.big>0 then
+  local b=math.clamp(e.big,1,MAXSIZE)+0.2
+  boxSize=Vector3.new(b,b,b)
+ end
+ local hl,box,bb,lb
  local ok=pcall(function()
   if obj then
    hl=raw("Highlight",{Adornee=obj,FillColor=ty.color,OutlineColor=Color3.new(1,1,1),DepthMode=Enum.HighlightDepthMode.AlwaysOnTop,Enabled=false},gui)
   end
-  bb=raw("BillboardGui",{Adornee=part,AlwaysOnTop=true,Size=UDim2.fromOffset(260,110),StudsOffset=Vector3.new(0,4,0),MaxDistance=math.huge},gui)
+  box=raw("BoxHandleAdornment",{Adornee=part,AlwaysOnTop=true,ZIndex=10,Size=boxSize,Color3=ty.color,Transparency=0.5,Visible=false},gui)
+  bb=raw("BillboardGui",{Adornee=part,AlwaysOnTop=true,Size=UDim2.fromOffset(260,110),StudsOffset=Vector3.new(0,4,0),MaxDistance=math.huge,
+   DistanceLowerLimit=0,LightInfluence=0,ResetOnSpawn=false},gui)
   lb=raw("TextLabel",{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,TextColor3=ty.color,TextStrokeTransparency=0,Font=espFontEnum(),TextSize=S.textSize,Text=ty.name},bb)
  end)
  if not ok then
   if hl then pcall(function() hl:Destroy() end) end
+  if box then pcall(function() box:Destroy() end) end
   if bb then pcall(function() bb:Destroy() end) end
   if ghostPart then pcall(function() ghostPart:Destroy() end) end
   return
@@ -632,7 +647,7 @@ local function mark(k,e)
   local ok2,l=pcall(function() return Drawing.new("Line") end)
   if ok2 and l then line=l line.Color=ty.color line.Thickness=S.tracerW line.Visible=false end
  end
- marks[k]={hl=hl,bb=bb,lb=lb,line=line,part=part,ghostPart=ghostPart,obj=obj,ghost=(obj==nil),big=e.big or 0,ti=e.ti,allow=true,d=0}
+ marks[k]={hl=hl,box=box,bb=bb,lb=lb,line=line,part=part,ghostPart=ghostPart,obj=obj,ghost=(obj==nil),big=e.big or 0,ti=e.ti,allow=true,d=0}
 end
 
 local function updateTargets()
@@ -1466,7 +1481,7 @@ local function tpTo(e)
   pcall(function() hrp.AssemblyLinearVelocity=Vector3.zero end)
   notify(trf("tp_ok",TYPES[e.ti].name),TYPES[e.ti].color,true)
   return true
-end
+ end
  notify(tr("tp_none"),C.bad,true)
  return false
 end
@@ -2649,6 +2664,14 @@ do
       m.hl.OutlineTransparency=S.hlOutline and 0 or 1
      end
     end
+    -- Box: Ersatz fuer alles ohne Highlight (ueber dem 28er-Limit, gemerkte Geister)
+    if m.box then
+     local needBox=(not m.hl) or (not m.allow)
+     m.box.Visible=show and S.hl and needBox
+     if m.box.Visible then
+      m.box.Transparency=math.clamp(0.4+(S.pulse and 0.3*pulse or 0),0,1)
+     end
+    end
     if show then
      m.lb.TextSize=S.textSize
      m.lb.Font=fnt
@@ -2675,6 +2698,7 @@ do
    else
     m.bb.Enabled=false
     if m.hl then m.hl.Enabled=false end
+    if m.box then m.box.Visible=false end
     if m.line then m.line.Visible=false end
    end
   end
@@ -2756,4 +2780,4 @@ closeHub=function()
 end
 closeB.MouseButton1Click:Connect(function() closeHub() end)
 
-print("Antonio Hub v3.1 geladen")
+print("Antonio Hub v3.2 geladen")
