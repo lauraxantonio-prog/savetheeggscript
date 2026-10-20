@@ -130,6 +130,15 @@ local TYPES={
  {name="Demon Egg",       text="demon egg",       luck="200B", color=Color3.fromRGB(190,20,20)},
  {name="Samurai Egg",     text="samurai egg",     luck="500B", color=Color3.fromRGB(255,40,65)},
  {name="Thunder Egg",     text="thunder egg",     luck="1T",   color=Color3.fromRGB(40,120,255)},
+ {name="Heavy Egg",       text="heavy egg",       luck="???",  color=Color3.fromRGB(100,100,110)},
+ {name="Rainbow Egg",     text="rainbow egg",     luck="???",  color=Color3.fromRGB(255,100,200)},
+ {name="Diamond Egg",     text="diamond egg",     luck="???",  color=Color3.fromRGB(100,230,255)},
+ {name="Gold Egg",        text="gold egg",        luck="???",  color=Color3.fromRGB(255,200,0)},
+ {name="Bone Demon Egg",  text="bone demon egg",  luck="2T",  color=Color3.fromRGB(190,40,40)},
+ {name="Bone King Egg",   text="bone king egg",   luck="3T",  color=Color3.fromRGB(220,220,220)},
+ {name="Skeleton Egg",    text="skeleton egg",    luck="???",  color=Color3.fromRGB(200,200,180)},
+ {name="Halloween Egg",   text="halloween egg",   luck="???",  color=Color3.fromRGB(255,120,0)},
+ {name="Admin Abuse Egg", text="admin abuse egg", luck="???",  color=Color3.fromRGB(255,0,255)},
 }
 -- Beim allerersten Start sind alle Sorten AN.
 if not S.eggsInit and next(S.eggs)==nil then
