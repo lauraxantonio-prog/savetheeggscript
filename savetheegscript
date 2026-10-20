@@ -1,4 +1,5 @@
 --// ANTONIO HUB v4.3  (Start | ESP | Anzahl | Teleport | Visuals | Notifier | Webhook | Spieler | Spieler ESP | Performance | Tools | Autofarm | Home | Einstellungen)
+--// v4.4: WEBHOOK NEU UND EINFACH: URL eintragen + speichern (bleibt fuer immer). Bei jedem Halloween / Skeleton / Bone King / Bone Demon / Thunder / Samurai / Demon Egg im Server wird ein Embed mit @everyone gesendet: Spiel-Link, Anzahl, Mutation (Normal / Gold / Diamant / Rainbow) und Groesse.
 --// v4.3: NEUER BEREICH "Spieler ESP": Box, Nametags (Name, Item, Entfernung, Leben), Lebensbalken, Tracer, Team-Check, Farbmodi,
 --//       Hitbox-Vergroesserung (HRP + optional Kopf), Spielerliste mit Teleport + Zuschauen. Alles wird beim Entladen zurueckgesetzt.
 --// v4.2: Mutationen aus "Little Helper": Rainbow / Diamond / Gold werden auch bei anderen Eiern erkannt (z.B. "Rainbow Angel Egg"), im ESP-Text markiert und eingefaerbt.
@@ -294,35 +295,22 @@ add("n_log_none","Noch nichts gemeldet.","Nothing reported yet.")
 add("n_log_clear","Verlauf leeren","Clear history")
 add("n_stats","Meldungen seit Start: %d  •  Klick auf Eintrag = Teleport","Alerts since start: %d  •  tap an entry = teleport")
 add("n_test_msg","Test: %s gefunden!","Test: %s found!")
--- Webhook
+-- Webhook (v4.4, einfach)
 add("wh_head","Discord-Webhook","Discord webhook")
 add("wh_url","Webhook-URL einfügen...","Paste webhook URL...")
 add("wh_save","Speichern","Save") add("wh_clear","Löschen","Delete")
 add("wh_saved","Webhook gespeichert","Webhook saved") add("wh_cleared","Webhook gelöscht","Webhook deleted")
 add("wh_cur","Gespeichert  •  …%s","Saved  •  …%s")
 add("wh_none","Noch kein Webhook gespeichert.","No webhook saved yet.")
-add("wh_list_head","Live-Embed","Live embed")
-add("wh_auto","Live-Embed senden","Send live embed")
-add("wh_auto_sub","Ein Embed in Discord wird laufend aktualisiert (auch beim AFK)","One embed in Discord is updated continuously (even while AFK)")
-add("wh_int","Intervall","Interval")
-add("wh_pos","Positionen mitsenden","Include positions") add("wh_pos_sub","Koordinaten der Eier (max. 4 pro Sorte)","Egg coordinates (max. 4 per type)")
-add("wh_now","Embed jetzt aktualisieren","Update embed now")
-add("wh_new","Neues Embed erzwingen","Force new embed")
-add("wh_new_ok","Neues Embed wird erstellt","Creating a new embed")
+add("wh_on","Webhook aktiv","Webhook active")
+add("wh_on_sub","Meldet seltene Eier mit @everyone","Reports rare eggs with @everyone")
 add("wh_test","Webhook testen","Test webhook")
-add("wh_ping_head","Ping bei neuem Ei","Ping on new egg")
-add("wh_ping_ph","User-ID, &Rollen-ID oder everyone (leer = aus)","User ID, &role ID or everyone (empty = off)")
-add("wh_ping_saved","Ping gespeichert","Ping saved")
-add("wh_ping_bad","Ungültig: User-ID, &Rollen-ID oder everyone","Invalid: user ID, &role ID or everyone")
-add("wh_alert_head","Sofort-Meldung","Instant alert")
-add("wh_alert","Meldung bei Fund","Alert on find") add("wh_alert_sub","Gefundene Eier aus dem Notifier sofort an Discord senden","Send eggs found by the notifier to Discord right away")
-add("wh_rate","Discord-Limit erreicht, später erneut","Discord rate limit, retrying later")
-add("wh_status_ok","Zuletzt gesendet: %s  •  %d Updates","Last sent: %s  •  %d updates")
-add("wh_status_bad","Senden fehlgeschlagen um %s  •  %d Updates","Sending failed at %s  •  %d updates")
-add("wh_status_none","Noch nichts gesendet.","Nothing sent yet.")
-add("wh_more","+%d weitere","+%d more")
 add("wh_test_msg","Antonio Hub: Webhook verbunden.","Antonio Hub: webhook connected.")
-add("wh_info","Das Embed zeigt Demon, Galaxy und Angel mit Anzahl, Größe, Entfernung, Uhrzeit, Datum, Server-Infos und Join-Link. Es wird alle paar Sekunden im selben Discord-Beitrag aktualisiert; in einem neuen Server entsteht automatisch ein neues Embed. URL und Embed-ID werden gespeichert. Läuft auch bei verstecktem Menü. Teile die URL mit niemandem.","The embed shows Demon, Galaxy and Angel with count, size, distance, time, date, server info and join link. It is updated every few seconds in the same Discord post; a new server automatically creates a new embed. URL and embed ID are saved. Keeps running with the menu hidden. Never share the URL.")
+add("wh_rate","Discord-Limit erreicht, später erneut","Discord rate limit, retrying later")
+add("wh_status_ok","Zuletzt gesendet: %s  •  %d Meldungen","Last sent: %s  •  %d alerts")
+add("wh_status_bad","Senden fehlgeschlagen um %s  •  %d Meldungen","Sending failed at %s  •  %d alerts")
+add("wh_status_none","Noch nichts gesendet.","Nothing sent yet.")
+add("wh_info","Sobald Halloween, Skeleton, Bone King, Bone Demon, Thunder, Samurai oder Demon Egg im Server auftaucht, wird ein Embed mit @everyone gesendet: Spiel-Link, Anzahl im Server, Mutation (Normal / Gold / Diamant / Rainbow) und Größe. Die URL wird dauerhaft gespeichert. Läuft auch bei verstecktem Menü. Teile die URL mit niemandem.","As soon as a Halloween, Skeleton, Bone King, Bone Demon, Thunder, Samurai or Demon egg appears in the server, an embed with @everyone is sent: game link, count in server, mutation (Normal / Gold / Diamond / Rainbow) and size. The URL is saved permanently. Keeps running with the menu hidden. Never share the URL.")
 add("wh_info_na","Dein Executor kann keine Dateien speichern – die URL gilt nur für diese Sitzung.","Your executor can't save files – the URL only lasts for this session.")
 -- Spieler
 add("p_move","Bewegung","Movement")
@@ -511,7 +499,7 @@ add("cfg_nofile","Laden geht nur, wenn dein Executor Dateien speichern kann","Lo
 add("cfg_exported","Config in Zwischenablage kopiert","Config copied to clipboard")
 add("cfg_import_ok","Config importiert","Config imported")
 add("cfg_import_bad","Ungültiger Config-Text","Invalid config text")
-add("cfg_info","Speichert Design, ESP, Notifier, Teleport, Visuals usw. Webhook-URL, Home, Ping, Fuse-Timer und Auto-Execute-URL werden bewusst nicht mitgespeichert. Eintrag antippen = Name übernehmen. Nach dem Laden schließt sich der Hub, dann Skript neu ausführen.","Saves design, ESP, notifier, teleport, visuals etc. Webhook URL, home, ping, fuse timer and auto-execute URL are intentionally not included. Tap an entry to fill the name. After loading the hub closes, then run the script again.")
+add("cfg_info","Speichert Design, ESP, Notifier, Teleport, Visuals usw. Webhook-URL, Home, Fuse-Timer und Auto-Execute-URL werden bewusst nicht mitgespeichert. Eintrag antippen = Name übernehmen. Nach dem Laden schließt sich der Hub, dann Skript neu ausführen.","Saves design, ESP, notifier, teleport, visuals etc. Webhook URL, home, fuse timer and auto-execute URL are intentionally not included. Tap an entry to fill the name. After loading the hub closes, then run the script again.")
 add("s_data","Daten","Data")
 add("s_save_info","Einstellungen werden automatisch gespeichert.","Settings are saved automatically.")
 add("s_save_na","Dein Executor kann keine Dateien speichern – Einstellungen gelten nur für diese Sitzung.","Your executor can't save files – settings only last for this session.")
@@ -2858,50 +2846,38 @@ end)()
  end)
 end)()
 
---// ---------------- DISCORD WEBHOOK (v3.8) ----------------
+--// ---------------- DISCORD WEBHOOK (v4.4, einfach) ----------------
+-- URL speichern (bleibt dauerhaft). Meldet Halloween / Skeleton / Bone King / Bone Demon / Thunder / Samurai / Demon Egg
+-- mit Spiel-Link, Anzahl im Server, Mutation (Normal / Gold / Diamant / Rainbow), Groesse und @everyone.
 ;(function()
  local wp=scroller(newPage("webhook"))
- local MPS=game:GetService("MarketplaceService")
  local sending=false
  local sentCount,lastTime,lastOk=0,nil,nil
- local nextAt=tick()+8
- local curLbl,statusLbl,urlBox,pingBox
- local lastEmbed
- local prevCnt
+ local curLbl,statusLbl,urlBox
+ local retryAt=0
  local REASON={bad="n_hook_bad",na="n_hook_na",fail="n_hook_fail",ok="n_hook_ok",rate="wh_rate",gone="n_hook_fail"}
-
- -- einmalige Migration auf v3.8: automatisch senden, 30 s
- if (S.whv or 0)<3 then
-  S.whv=3 S.hkOn=true S.hkInterval=30
-  save()
- end
 
  local function L(de,en) return (S.lang=="en") and en or de end
  local function cut(s,n) if #s>n then return s:sub(1,n-3).."..." end return s end
  local function colorInt(c) return math.floor(c.R*255+0.5)*65536+math.floor(c.G*255+0.5)*256+math.floor(c.B*255+0.5) end
- local function fmtAge(s)
-  s=math.floor(s)
-  local h,m=math.floor(s/3600),math.floor(s/60)%60
-  if h>0 then return string.format("%dh %02dm",h,m) end
-  return string.format("%dm %02ds",m,s%60)
- end
  local function joinLink() return "https://www.roblox.com/games/start?placeId="..game.PlaceId.."&gameInstanceId="..game.JobId end
+ local MUT_ICON={[0]="⚪","🟡","💎","🌈"}
+ local function mutName(m)
+  m=m or 0
+  if m==0 then return "Normal" end
+  if m==1 then return "Gold" end
+  if m==2 then return L("Diamant","Diamond") end
+  return "Rainbow"
+ end
 
- local EMOJI={["demon egg"]="😈",["galaxy egg"]="🌌",["angel egg"]="👼"}
  local WATCH,isWatch={}, {}
- for _,key in ipairs({"demon egg","galaxy egg","angel egg"}) do
+ for _,key in ipairs({"halloween egg","skeleton egg","bone king egg","bone demon egg","thunder egg","samurai egg","demon egg"}) do
   for i,ty in ipairs(TYPES) do
    if ty.text==key then WATCH[#WATCH+1]=i isWatch[i]=true end
   end
  end
 
- local gameName
- task.spawn(function()
-  local ok,info=pcall(function() return MPS:GetProductInfo(game.PlaceId) end)
-  if ok and type(info)=="table" and type(info.Name)=="string" then gameName=info.Name end
- end)
-
- --// HTTP-Kern
+ --// HTTP-Kern (HK.post bleibt fuer den Notifier erhalten)
  local function getReq() return (syn and syn.request) or request or http_request or (http and http.request) end
  HK.valid=function(url)
   if type(url)~="string" or url:sub(1,8)~="https://" then return false end
@@ -2926,109 +2902,70 @@ end)()
    if cb then cb(good,why,isT and r.Body or nil) end
   end)
  end
- -- bleibt kompatibel zum Notifier (sendHook)
  HK.post=function(tbl,cb)
   if not HK.valid(S.nfHook) then if cb then cb(false,"bad") end return end
   HK.call("POST",S.nfHook,tbl,cb)
  end
- local function callWait(method,url,tbl)
-  local done,good,why,body=false,false,"fail",nil
-  HK.call(method,url,tbl,function(g,w,b) good=g why=w body=b done=true end)
+ local function postWait(tbl)
+  local done,good,why=false,false,"fail"
+  HK.post(tbl,function(g,w) good=g why=w done=true end)
   local t0=tick()
   while not done and tick()-t0<15 do task.wait(0.1) end
-  return good,why,body
+  return good,why
  end
 
- --// Embed bauen
- local function eggField(ti,list,isNew)
+ --// Embed fuer eine Eiersorte
+ local function buildEmbed(ti,newN)
   local ty=TYPES[ti]
-  local n=list and #list or 0
-  local v
-  if n==0 then
-   v="🍀 Luck "..ty.luck.."\n❌ "..L("Nicht im Server","Not in server")
-  else
-   table.sort(list,function(a,b) return (a.d or 1e9)<(b.d or 1e9) end)
-   local ls={"🍀 Luck "..ty.luck,"**×"..n.."** "..L("im Server","in server")..(isNew and "  🆕" or "")}
-   for i=1,math.min(n,4) do
-    local g=list[i]
-    local s="`#"..i.."` 📏 "..string.format("%.1f",g.big).." studs"
-    if g.d then s=s.."  📍 "..math.floor(g.d).." m" end
-    if S.hkPos then s=s..string.format("\n> X %d  Y %d  Z %d",math.floor(g.pos.X),math.floor(g.pos.Y),math.floor(g.pos.Z)) end
-    if not g.live then s=s.." 👻" end
-    ls[#ls+1]=s
-   end
-   if n>4 then ls[#ls+1]="… "..trf("wh_more",n-4) end
-   v=table.concat(ls,"\n")
-  end
-  return {name=(EMOJI[ty.text] or "🥚").." "..ty.name,value=cut(v,1000),inline=true}
- end
-
- local function buildEmbed()
-  local now=os.time()
-  local c=P.Character
-  local hrp=c and c:FindFirstChild("HumanoidRootPart")
-  local rp=hrp and hrp.Position
-  local per,cnt={}, {}
-  local total,types,rareI=0,0,nil
+  local list,mc={}, {[0]=0,0,0,0}
   for _,e in pairs(lastTargets) do
-   total=total+1
-   if not cnt[e.ti] then cnt[e.ti]=0 types=types+1 end
-   cnt[e.ti]=cnt[e.ti]+1
-   if not rareI or e.ti>rareI then rareI=e.ti end
-   if isWatch[e.ti] then
-    local l=per[e.ti]
-    if not l then l={} per[e.ti]=l end
-    l[#l+1]={pos=e.pos,big=e.big or 0,d=rp and (e.pos-rp).Magnitude or nil,live=e.live}
+   if e.ti==ti then
+    list[#list+1]=e
+    local m=e.mut or 0
+    mc[m]=(mc[m] or 0)+1
    end
   end
-  local active,parts,bestI=0,{}, nil
-  for _,wi in ipairs(WATCH) do
-   if cnt[wi] then
-    active=active+cnt[wi]
-    parts[#parts+1]=(EMOJI[TYPES[wi].text] or "🥚").." **"..cnt[wi].."× "..TYPES[wi].name.."**"
-    if not bestI or wi>bestI then bestI=wi end
-   end
+  table.sort(list,function(a,b)
+   if (a.mut or 0)~=(b.mut or 0) then return (a.mut or 0)>(b.mut or 0) end
+   return (a.big or 0)>(b.big or 0)
+  end)
+  local n=#list
+  local mparts={}
+  for m=0,3 do
+   if (mc[m] or 0)>0 then mparts[#mparts+1]=MUT_ICON[m].." "..mutName(m)..": **"..mc[m].."**" end
   end
-  local desc
-  if active>0 then
-   desc="🟢 **"..L("Jetzt zum Sammeln aktiv:","Active to collect now:").."**\n"..table.concat(parts,"\n")
-  else
-   desc="🔴 "..L("Aktuell kein Demon-, Galaxy- oder Angel-Ei im Server.","No Demon, Galaxy or Angel egg in the server right now.")
+  local ls={}
+  for i=1,math.min(n,5) do
+   local e=list[i]
+   ls[#ls+1]="`#"..i.."` "..MUT_ICON[e.mut or 0].." **"..mutName(e.mut).."**  📏 "..string.format("%.1f",e.big or 0).." studs"..(e.live and "" or " 👻")
   end
-  desc=desc.."\n\n🕒 "..L("Stand:","Updated:").." <t:"..now..":T>  •  <t:"..now..":R>"
-
-  local fields={}
-  for _,wi in ipairs(WATCH) do
-   local isNew=prevCnt and ((cnt[wi] or 0)>(prevCnt[wi] or 0)) or false
-   fields[#fields+1]=eggField(wi,per[wi],isNew)
-  end
-  prevCnt=cnt
-
-  fields[#fields+1]={name="👥 "..L("Spieler","Players"),value=#Players:GetPlayers().."/"..Players.MaxPlayers,inline=true}
-  fields[#fields+1]={name="📦 "..L("Eier gesamt","Eggs total"),value="**"..total.."** • "..types.." "..L("Sorten","types"),inline=true}
-  local rv="–"
-  if rareI then rv=TYPES[rareI].name.."\nLuck "..TYPES[rareI].luck.." • ×"..cnt[rareI] end
-  fields[#fields+1]={name="🏆 "..L("Seltenstes Ei","Rarest egg"),value=rv,inline=true}
-  fields[#fields+1]={name="⏱️ "..L("Server-Laufzeit","Server uptime"),value=fmtAge(workspace.DistributedGameTime),inline=true}
-  fields[#fields+1]={name="📅 "..L("Datum & Uhrzeit","Date & time"),value=os.date("%d.%m.%Y").."\n"..os.date("%H:%M:%S"),inline=true}
-  fields[#fields+1]={name="🔄 "..L("Update","Update"),value=L("alle ","every ")..S.hkInterval.."s\n<t:"..(now+S.hkInterval)..":R>",inline=true}
-  local jv="**[▶ "..L("Jetzt Server beitreten","Join server now").."]("..joinLink()..")**\n"
-   .."PlaceId `"..game.PlaceId.."`\nJobId `"..game.JobId.."`\n"
-   .."```lua\ngame:GetService(\"TeleportService\"):TeleportToPlaceInstance("..game.PlaceId..",\""..game.JobId.."\",game.Players.LocalPlayer)\n```"
-  fields[#fields+1]={name="🔗 "..L("Server beitreten","Join server"),value=cut(jv,1020),inline=false}
-
+  if n>5 then ls[#ls+1]="… +"..(n-5).." "..L("weitere","more") end
   return {
-   author={name=gameName or "Roblox"},
-   title="🥚 Antonio Hub  •  Egg Radar",
+   title="🚨 "..ty.name.." "..L("im Server!","in server!"),
    url=joinLink(),
-   description=cut(desc,3500),
-   color=bestI and colorInt(TYPES[bestI].color) or 5197916,
-   fields=fields,
-   footer={text="Antonio Hub v4.3  •  discord.gg/saveegg"},
-   timestamp=os.date("!%Y-%m-%dT%H:%M:%SZ",now),
+   description="🍀 Luck **"..ty.luck.."**"..((newN or 0)>0 and ("  •  🆕 +"..newN) or ""),
+   color=colorInt(ty.color),
+   fields={
+    {name="📦 "..L("Anzahl im Server","Count in server"),value="**×"..n.."**",inline=true},
+    {name="✨ Mutation",value=#mparts>0 and cut(table.concat(mparts,"\n"),1000) or "–",inline=true},
+    {name="📏 "..L("Größe","Size"),value=#ls>0 and cut(table.concat(ls,"\n"),1000) or "–",inline=false},
+    {name="🔗 "..L("Spiel-Link","Game link"),value="**[▶ "..L("Server beitreten","Join server").."]("..joinLink()..")**\nJobId `"..game.JobId.."`",inline=false},
+   },
+   footer={text="Antonio Hub v4.4  •  discord.gg/saveegg"},
+   timestamp=os.date("!%Y-%m-%dT%H:%M:%SZ"),
   }
  end
 
+ local function sendFound(order,newCount)
+  local embeds={}
+  for _,ti in ipairs(order) do
+   embeds[#embeds+1]=buildEmbed(ti,newCount[ti])
+   if #embeds>=10 then break end
+  end
+  return postWait({username="Antonio Hub",content="@everyone 🚨",embeds=embeds,allowed_mentions={parse={"everyone"}}})
+ end
+
+ --// Seite
  local function refreshCur()
   if S.nfHook=="" then curLbl.Text=tr("wh_none") else curLbl.Text=trf("wh_cur",S.nfHook:sub(-8)) end
  end
@@ -3037,212 +2974,99 @@ end)()
   else statusLbl.Text=tr("wh_status_none") end
  end
 
- --// Senden: bestehendes Embed bearbeiten (PATCH), im neuen Server neues Embed (POST)
- local function sendList(manual,forceNew)
-  if sending then return end
-  if not HK.valid(S.nfHook) then
-   if manual then notify(tr("n_hook_bad"),C.bad,true) end
-   return
-  end
-  sending=true
-  task.spawn(function()
-   local emb=buildEmbed()
-   lastEmbed=emb
-   local base,q=S.nfHook:match("^([^?]*)(.*)$")
-   local good,why,body=false,"fail",nil
-   local patched=false
-   if not forceNew and S.hkMsgId~="" and S.hkMsgJob==game.JobId then
-    good,why=callWait("PATCH",base.."/messages/"..S.hkMsgId..q,{embeds={emb}})
-    if good then patched=true
-    elseif why=="gone" then S.hkMsgId="" S.hkMsgJob="" end
-   end
-   if not patched and (why~="rate" and why~="na") then
-    local url=base..(q=="" and "?wait=true" or (q.."&wait=true"))
-    good,why,body=callWait("POST",url,{username="Antonio Hub",embeds={emb}})
-    if good then
-     local ok,d=pcall(function() return HttpService:JSONDecode(body) end)
-     if ok and type(d)=="table" and d.id then
-      S.hkMsgId=tostring(d.id)
-      S.hkMsgJob=game.JobId
-      save()
-     end
-    end
-   end
-   sending=false
-   if why=="rate" then nextAt=tick()+15 elseif not good then nextAt=tick()+10 end
-   lastTime=os.date("%H:%M:%S")
-   lastOk=good
-   if good then sentCount=sentCount+1 end
-   pcall(refreshStatus)
-   if manual then notify(tr(REASON[why] or "n_hook_fail"),good and C.good or C.bad,true) end
-  end)
- end
-
- --// Ping-Nachricht, wenn Demon/Galaxy/Angel neu auftaucht (Bearbeiten pingt nicht)
- local function pingText()
-  local p=(S.hkPing or ""):gsub("%s","")
-  if p=="" then return nil end
-  local lp=p:lower()
-  if lp=="everyone" or lp=="@everyone" then return "@everyone" end
-  if lp=="here" or lp=="@here" then return "@here" end
-  if p:sub(1,1)=="&" and p:sub(2):match("^%d+$") then return "<@&"..p:sub(2)..">" end
-  if p:match("^%d+$") then return "<@"..p..">" end
-  return nil
- end
- local function sendAlert(found)
-  local ping=pingText()
-  if not ping then return end
-  local embeds={}
-  for _,f in ipairs(found) do
-   local ty=TYPES[f.ti]
-   embeds[#embeds+1]={
-    title="🆕 "..(EMOJI[ty.text] or "🥚").." "..ty.name.." "..L("aufgetaucht!","spawned!"),
-    description="🍀 Luck "..ty.luck.."  •  **×"..f.n.."** "..L("im Server","in server").."\n**[▶ "..L("Jetzt beitreten","Join now").."]("..joinLink()..")**",
-    color=colorInt(ty.color),
-    timestamp=os.date("!%Y-%m-%dT%H:%M:%SZ")}
-  end
-  HK.post({username="Antonio Hub",content=ping.." 🚨",embeds=embeds,allowed_mentions={parse={"everyone","roles","users"}}})
- end
-
- --// Seite
- local function makeBox(initial,key)
+ head(wp,"wh_head")
+ curLbl=makeLabelBox(wp,nil,nil,36)
+ do
   local f=new("Frame",{Size=UDim2.new(1,0,0,38),BackgroundColor3=C.item,LayoutOrder=ord(wp)},wp)
   round(f,10)
   local s=stroke(f,C.border,0.3)
-  local tb=new("TextBox",{BackgroundTransparency=1,Position=UDim2.fromOffset(12,0),Size=UDim2.new(1,-24,1,0),Text=initial,PlaceholderColor3=C.sub,
+  urlBox=new("TextBox",{BackgroundTransparency=1,Position=UDim2.fromOffset(12,0),Size=UDim2.new(1,-24,1,0),Text=S.nfHook,PlaceholderColor3=C.sub,
    TextColor3=C.txt,Font=Enum.Font.GothamMedium,TextSize=12,ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},f)
-  reg(tb,key,"PlaceholderText")
-  tb.Focused:Connect(function() tw(s,{Color=C.acc,Transparency=0}) end)
-  tb.FocusLost:Connect(function() tw(s,{Color=C.border,Transparency=0.3}) end)
-  return tb
+  reg(urlBox,"wh_url","PlaceholderText")
+  urlBox.Focused:Connect(function() tw(s,{Color=C.acc,Transparency=0}) end)
+  urlBox.FocusLost:Connect(function() tw(s,{Color=C.border,Transparency=0.3}) end)
  end
-
- head(wp,"wh_head")
- curLbl=makeLabelBox(wp,nil,nil,36)
- urlBox=makeBox(S.nfHook,"wh_url")
 
  local g1=new("Frame",{Size=UDim2.new(1,0,0,38),BackgroundTransparency=1,LayoutOrder=ord(wp)},wp)
  new("UIGridLayout",{CellSize=UDim2.new(0.5,-5,0,38),CellPadding=UDim2.fromOffset(10,10),SortOrder=Enum.SortOrder.LayoutOrder},g1)
  makeButton(g1,"wh_save","acc",function()
   local t=urlBox.Text:gsub("^%s+",""):gsub("%s+$","")
   if t=="" then
-   S.nfHook="" S.hkMsgId="" S.hkMsgJob=""
+   S.nfHook=""
    save() refreshCur()
    notify(tr("wh_cleared"),C.good,true)
    return
   end
   if not HK.valid(t) then notify(tr("n_hook_bad"),C.bad,true) return end
-  if t~=S.nfHook then S.hkMsgId="" S.hkMsgJob="" end
   S.nfHook=t
   urlBox.Text=t
-  nextAt=tick()+2
+  retryAt=0
   save() refreshCur()
   notify(tr("wh_saved"),C.good,true)
  end,1)
  makeButton(g1,"wh_clear",Color3.fromRGB(150,60,80),function()
-  S.nfHook="" S.hkMsgId="" S.hkMsgJob=""
+  S.nfHook=""
   urlBox.Text=""
   save() refreshCur()
   notify(tr("wh_cleared"),C.good,true)
  end,2)
 
- head(wp,"wh_list_head")
- makeToggle(wp,"wh_auto","wh_auto_sub",S.hkOn,function(v)
+ makeToggle(wp,"wh_on","wh_on_sub",S.hkOn,function(v)
   S.hkOn=v
   save()
-  if v then
-   nextAt=tick()+2
-   if not HK.valid(S.nfHook) then notify(tr("n_hook_bad"),C.bad,true) end
-  end
+  if v and not HK.valid(S.nfHook) then notify(tr("n_hook_bad"),C.bad,true) end
  end)
- makeSlider(wp,"wh_int",15,600,15,S.hkInterval,function(v)
-  S.hkInterval=v
-  save()
-  nextAt=tick()+v
- end,nil,function(v) return v.." s" end)
- makeToggle(wp,"wh_pos","wh_pos_sub",S.hkPos,function(v) S.hkPos=v save() end)
- local g2=new("Frame",{Size=UDim2.new(1,0,0,38),BackgroundTransparency=1,LayoutOrder=ord(wp)},wp)
- new("UIGridLayout",{CellSize=UDim2.new(0.5,-5,0,38),CellPadding=UDim2.fromOffset(10,10),SortOrder=Enum.SortOrder.LayoutOrder},g2)
- makeButton(g2,"wh_now",Color3.fromRGB(90,60,200),function() sendList(true,false) end,1)
- makeButton(g2,"wh_new",Color3.fromRGB(40,100,170),function()
-  S.hkMsgId="" S.hkMsgJob=""
-  save()
-  notify(tr("wh_new_ok"),C.good,true)
-  sendList(false,true)
- end,2)
  makeButton(wp,"wh_test",Color3.fromRGB(70,74,100),function()
   if not HK.valid(S.nfHook) then notify(tr("n_hook_bad"),C.bad,true) return end
   HK.post({username="Antonio Hub",content=tr("wh_test_msg")},function(good,why)
    notify(tr(REASON[why] or "n_hook_fail"),good and C.good or C.bad,true)
   end)
  end)
-
- head(wp,"wh_ping_head")
- pingBox=makeBox(S.hkPing or "","wh_ping_ph")
- pingBox.FocusLost:Connect(function()
-  local t=pingBox.Text:gsub("^%s+",""):gsub("%s+$","")
-  local old=S.hkPing
-  S.hkPing=t
-  if t~="" and not pingText() then
-   S.hkPing=old or ""
-   pingBox.Text=S.hkPing
-   notify(tr("wh_ping_bad"),C.bad,true)
-   return
-  end
-  save()
-  notify(tr("wh_ping_saved"),C.good,true)
- end)
-
- head(wp,"wh_alert_head")
- makeToggle(wp,"wh_alert","wh_alert_sub",S.nfHookOn,function(v) S.nfHookOn=v save() end)
  statusLbl=makeLabelBox(wp,nil,nil,36)
- makeLabelBox(wp,canFile and "wh_info" or "wh_info_na",nil,canFile and 128 or 40)
-
+ makeLabelBox(wp,canFile and "wh_info" or "wh_info_na",nil,canFile and 112 or 40)
  onLang(function() pcall(refreshCur) pcall(refreshStatus) end)
 
- --// Schleife: läuft immer weiter, auch wenn das Menü versteckt ist / beim AFK
- local t0=tick()
+ --// Schleife: laeuft immer weiter, auch bei verstecktem Menue / AFK
+ local reported,lastSeen={}, {}
  task.spawn(function()
-  local alertPrev
+  task.wait(8) -- erst den ersten Scan abwarten
   while alive do
-   if S.hkOn and HK.valid(S.nfHook) then
-    local cnow={}
-    for _,e in pairs(lastTargets) do
-     if isWatch[e.ti] then cnow[e.ti]=(cnow[e.ti] or 0)+1 end
-    end
-    if tick()-t0<25 or not alertPrev then
-     alertPrev=cnow
-    else
-     local found={}
-     for _,wi in ipairs(WATCH) do
-      local a,b=cnow[wi] or 0,alertPrev[wi] or 0
-      if a>b then found[#found+1]={ti=wi,n=a} end
-     end
-     alertPrev=cnow
-     if #found>0 then
-      pcall(sendAlert,found)
-      nextAt=tick()
+   if S.hkOn and HK.valid(S.nfHook) and tick()>=retryAt and not sending then
+    local now=tick()
+    local newKeys,order,newCount={}, {}, {}
+    for k,e in pairs(lastTargets) do
+     if isWatch[e.ti] then
+      lastSeen[k]=now
+      if not reported[k] then
+       reported[k]=true
+       newKeys[#newKeys+1]=k
+       if not newCount[e.ti] then newCount[e.ti]=0 order[#order+1]=e.ti end
+       newCount[e.ti]=newCount[e.ti]+1
+      end
      end
     end
-    if tick()>=nextAt then
-     nextAt=tick()+S.hkInterval
-     sendList(false,false)
+    for k in pairs(reported) do
+     if not lastTargets[k] and now-(lastSeen[k] or 0)>120 then reported[k]=nil lastSeen[k]=nil end
+    end
+    if #order>0 then
+     table.sort(order,function(a,b) return a>b end)
+     sending=true
+     local good,why=sendFound(order,newCount)
+     sending=false
+     lastTime=os.date("%H:%M:%S")
+     lastOk=good
+     if good then
+      sentCount=sentCount+#order
+     else
+      for _,k in ipairs(newKeys) do reported[k]=nil end
+      retryAt=tick()+(why=="rate" and 20 or 10)
+     end
+     pcall(refreshStatus)
     end
    end
    task.wait(1)
   end
  end)
-
- --// Beim Beenden: Embed auf "Hub beendet" setzen
- restorers[#restorers+1]=function()
-  if not (lastEmbed and S.hkOn and HK.valid(S.nfHook) and S.hkMsgId~="" and S.hkMsgJob==game.JobId) then return end
-  local e={}
-  for k,v in pairs(lastEmbed) do e[k]=v end
-  e.color=5197916
-  e.description="⚫ **"..L("Hub beendet","Hub stopped").."**  •  <t:"..os.time()..":R>\n\n"..lastEmbed.description
-  local base,q=S.nfHook:match("^([^?]*)(.*)$")
-  HK.call("PATCH",base.."/messages/"..S.hkMsgId..q,{embeds={e}})
- end
 end)()
 
 --// ---------------- SPIELER ----------------
@@ -4824,4 +4648,4 @@ closeHub=function()
 end
 closeB.MouseButton1Click:Connect(function() closeHub() end)
 
-print("Antonio Hub v4.3 geladen")
+print("Antonio Hub v4.4 geladen")
