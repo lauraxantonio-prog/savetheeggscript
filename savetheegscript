@@ -1,4 +1,6 @@
---// ANTONIO HUB v4.1  (Start | ESP | Anzahl | Teleport | Visuals | Notifier | Webhook | Spieler | Performance | Tools | Autofarm | Home | Einstellungen)
+--// ANTONIO HUB v4.2  (Start | ESP | Anzahl | Teleport | Visuals | Notifier | Webhook | Spieler | Performance | Tools | Autofarm | Home | Einstellungen)
+--// v4.2: Mutationen aus "Little Helper": Rainbow / Diamond / Gold werden auch bei anderen Eiern erkannt (z.B. "Rainbow Angel Egg"), im ESP-Text markiert und eingefaerbt.
+--//       Einstellungen > Mutationen: Mutation anzeigen, Nur Mutationen, Mutation (alle 3) = Rainbow-/Diamond-/Gold-Ei im ESP an/aus
 --// v4.1: Aus "Little Helper" uebernommen: Fuse-Timer (Overlay + Cooldown, bleibt nach Rejoin erhalten, Meldung wenn bereit), Auto-Run, Baeume ausblenden,
 --//       Anti-AFK-Impuls mit Intervall, Ei-Pfade kopieren, Auto-Execute nach Server Hop/Rejoin, Rainbow-Ei mit Regenbogen-Farbe im ESP
 --// v4.0: Uebersetzung bereinigt (DE/EN 1:1, doppelte Texte entfernt, nichts mehr fest im Code). Visuals: FPS/Ping-HUD, Zoom-Limit aufheben, Kontrast, Ei-Jagd-Preset, Werte bleiben gespeichert.
@@ -59,6 +61,8 @@ local S={
  vBright=2,vClock=14,vSat=0.5,vContrast=0.1,vFov=90,vZoom=25,vMaxZoom=500,vHud=false,pCap=60,
  -- neu in v4.1 (Fuse-Timer, Anti-AFK-Impuls, Auto-Execute, Rainbow-ESP)
  fuseOn=false,fuseCD=60,fuseEnd=0,afkClick=false,afkInt=120,autoload="",rainbowEsp=true,
+ -- neu in v4.2 (Mutationen)
+ mutTag=true,mutOnly=false,
 }
 do
  if canFile then
@@ -414,6 +418,11 @@ add("s_border","Rahmen-Animation","Border animation") add("s_border_sub","Rotier
 add("s_tips","Tipps anzeigen","Show tips") add("s_tips_sub","Tipp-Karte auf der Startseite","Tip card on the start page")
 add("s_center","Menü zentrieren","Center menu")
 add("s_key","Menü-Taste: %s","Menu key: %s") add("s_key_wait","Taste drücken... (Esc = abbrechen)","Press a key... (Esc = cancel)")
+-- Mutationen (v4.2)
+add("s_mut","Mutationen","Mutations")
+add("mut_tag","Mutation anzeigen","Show mutation") add("mut_tag_sub","Erkennt Rainbow / Diamond / Gold bei Eiern, schreibt sie in den ESP-Text und färbt das Ei ein","Detects Rainbow / Diamond / Gold on eggs, adds it to the ESP text and tints the egg")
+add("mut_only","Nur Mutationen","Mutations only") add("mut_only_sub","Zeigt nur Eier mit Mutation sowie Rainbow-, Diamond- und Gold-Eier","Only shows mutated eggs plus Rainbow, Diamond and Gold eggs")
+add("mut_all","Mutation (alle 3)","Mutation (all 3)") add("mut_all_sub","Rainbow-, Diamond- und Gold-Ei im ESP gemeinsam an/aus","Rainbow, Diamond and Gold egg on/off in the ESP together")
 add("s_esp","ESP-Darstellung","ESP appearance")
 add("s_hl","Highlight","Highlight") add("s_hl_sub","Farbige Füllung der Eier (Box-Ersatz ab 28 Eiern)","Colored fill on eggs (box fallback beyond 28 eggs)")
 add("s_hlo","Highlight-Umriss","Highlight outline") add("s_hlo_sub","Weißer Rand um die Eier","White outline around eggs")
@@ -647,6 +656,13 @@ local scanning=false
 local notified={}
 local HL_MAX=28 -- Roblox zeigt nur ca. 31 Highlights gleichzeitig; alle weiteren Eier bekommen eine Box
 
+-- v4.2: Mutationen (1 = Gold, 2 = Diamond, 3 = Rainbow)
+HK.MUTN={"Gold","Diamond","Rainbow"}
+HK.MUTTYPE={["rainbow egg"]=true,["diamond egg"]=true,["gold egg"]=true}
+HK.isMut=function(e)
+ return (e.mut or 0)>0 or HK.MUTTYPE[TYPES[e.ti].text]==true
+end
+
 local typeOfPrompt,targetOf,sizeOf,partOf,addPrompt
 do
 local function norm(s)
@@ -698,6 +714,32 @@ function typeOfPrompt(p)
   a=a.Parent
  end
  return nil
+end
+
+-- v4.2: Mutation eines Eis erkennen (Prompt-Text, Name des Eis, Text-Attribute)
+HK.mutOf=function(p,best,base,ti)
+ local s=((p.ObjectText or "").." "..(p.ActionText or "")):gsub("<[^>]+>","")
+ s=s:lower()
+ local function add(o)
+  if not o then return end
+  s=s.." "..o.Name:lower()
+  local ok,at=pcall(function() return o:GetAttributes() end)
+  if ok and at then
+   for _,v in pairs(at) do
+    if type(v)=="string" then s=s.." "..v:lower() end
+   end
+  end
+ end
+ add(best)
+ if base~=best then add(base) end
+ local own=TYPES[ti].text
+ local g=s:find("%f[%a]gold%f[%A]")~=nil and own~="gold egg"
+ local d=(s:find("diamond",1,true)~=nil or s:find("diamant",1,true)~=nil) and own~="diamond egg"
+ local r=(s:find("rainbow",1,true)~=nil or s:find("regenbog",1,true)~=nil) and own~="rainbow egg"
+ if r then return 3 end
+ if d then return 2 end
+ if g then return 1 end
+ return 0
 end
 
 function sizeOf(o)
@@ -833,7 +875,7 @@ local function mark(k,e)
   local ok2,l=pcall(function() return Drawing.new("Line") end)
   if ok2 and l then line=l line.Color=ty.color line.Thickness=S.tracerW line.Visible=false end
  end
- marks[k]={hl=hl,box=box,bb=bb,lb=lb,line=line,part=part,ghostPart=ghostPart,obj=obj,ghost=(obj==nil),big=e.big or 0,ti=e.ti,allow=true,d=0}
+ marks[k]={hl=hl,box=box,bb=bb,lb=lb,line=line,part=part,ghostPart=ghostPart,obj=obj,ghost=(obj==nil),big=e.big or 0,ti=e.ti,allow=true,d=0,mut=e.mut or 0}
 end
 
 local function inPlayer(o)
@@ -858,7 +900,7 @@ local function updateTargets()
    if ti then
     local best,base=targetOf(p,now)
     if best and not (c and best:IsDescendantOf(c)) then
-     items[#items+1]={ti=ti,best=best,base=base}
+     items[#items+1]={ti=ti,best=best,base=base,mut=HK.mutOf(p,best,base,ti)}
     end
    end
   end
@@ -870,7 +912,7 @@ local function updateTargets()
    elseif not inPlayer(o) then
     local sz=sizeOf(o)
     if not (sz and math.max(sz.X,sz.Y,sz.Z)>MAXSIZE) and partOf(o) then
-     items[#items+1]={ti=ti,best=o,base=o}
+     items[#items+1]={ti=ti,best=o,base=o,mut=0}
     end
    end
   end
@@ -881,7 +923,7 @@ local function updateTargets()
   if not g then g={} groups[it.best]=g end
   g[#g+1]=it
  end
- local final={}
+ local final,fmut={}, {}
  for best,g in pairs(groups) do
   local split=false
   if #g>1 then
@@ -896,9 +938,12 @@ local function updateTargets()
    end
   end
   if split then
-   for _,it in ipairs(g) do final[it.base]=it.ti end
+   for _,it in ipairs(g) do final[it.base]=it.ti fmut[it.base]=it.mut end
   else
+   local mm=0
+   for _,it in ipairs(g) do if (it.mut or 0)>mm then mm=it.mut end end
    final[best]=g[1].ti
+   fmut[best]=mm
   end
  end
  local seen={}
@@ -925,7 +970,7 @@ local function updateTargets()
     end
     objKey[t]=k
    end
-   e.obj=t e.pos=pos e.live=true e.t=now
+   e.obj=t e.pos=pos e.live=true e.t=now e.mut=fmut[t] or 0
    if not e.big then
     local sz=sizeOf(t)
     e.big=sz and math.max(sz.X,sz.Y,sz.Z) or 0
@@ -947,7 +992,7 @@ local function updateTargets()
  end
  local vis={}
  for k,e in pairs(cache) do
-  if not inHomeZone(e.pos) then vis[k]=e end
+  if not inHomeZone(e.pos) and not (S.mutOnly and not HK.isMut(e)) then vis[k]=e end
  end
  local want,counts,all={}, {}, {}
  for k,e in pairs(vis) do
@@ -965,6 +1010,8 @@ local function updateTargets()
    if not okm then unmark(k) m=nil end
   end
   if not m then pcall(mark,k,e) end
+  local mm=marks[k]
+  if mm then mm.mut=e.mut or 0 end
  end
  for k in pairs(marks) do
   if not want[k] then unmark(k) end
@@ -2346,7 +2393,8 @@ end
    r.row.LayoutOrder=i
    r.color=ty.color
    r.bar.BackgroundColor3=ty.color
-   r.nm.Text=ty.name
+   local mn=(e.mut or 0)>0 and (" ("..HK.MUTN[e.mut]..")") or ""
+   r.nm.Text=ty.name..mn
    local s=string.format("Luck %s  •  X %d  Y %d  Z %d",ty.luck,math.floor(e.pos.X),math.floor(e.pos.Y),math.floor(e.pos.Z))
    if not e.live then s=s.."  •  "..tr("ghost_tag") end
    r.sub.Text=s
@@ -2932,7 +2980,7 @@ end)()
    description=cut(desc,3500),
    color=bestI and colorInt(TYPES[bestI].color) or 5197916,
    fields=fields,
-   footer={text="Antonio Hub v4.1  •  discord.gg/saveegg"},
+   footer={text="Antonio Hub v4.2  •  discord.gg/saveegg"},
    timestamp=os.date("!%Y-%m-%dT%H:%M:%SZ",now),
   }
  end
@@ -3608,12 +3656,13 @@ do
   local out={}
   for _,m in pairs(marks) do
    local ty=TYPES[m.ti]
+   local mn=(m.mut or 0)>0 and (" ("..HK.MUTN[m.mut]..")") or ""
    if m.obj then
     local ok,path=pcall(function() return m.obj:GetFullName() end)
-    out[#out+1]=ty.name.." | "..m.obj.ClassName.." | "..(ok and path or "?")
+    out[#out+1]=ty.name..mn.." | "..m.obj.ClassName.." | "..(ok and path or "?")
    elseif m.part then
     local p=m.part.Position
-    out[#out+1]=string.format("%s | ghost | X %d Y %d Z %d",ty.name,math.floor(p.X),math.floor(p.Y),math.floor(p.Z))
+    out[#out+1]=string.format("%s%s | ghost | X %d Y %d Z %d",ty.name,mn,math.floor(p.X),math.floor(p.Y),math.floor(p.Z))
    end
   end
   if #out==0 then setToolStatus(tr("paths_none")) return end
@@ -4003,6 +4052,26 @@ do
  makeToggle(sp,"s_anim","s_anim_sub",S.anim,function(v) S.anim=v save() end)
  makeToggle(sp,"s_border","s_border_sub",S.borderAnim,function(v) S.borderAnim=v save() end)
 
+ --// v4.2: Mutationen (Rainbow / Diamond / Gold) aus Little Helper
+ head(sp,"s_mut")
+ makeToggle(sp,"mut_tag","mut_tag_sub",S.mutTag,function(v) S.mutTag=v save() end)
+ makeToggle(sp,"mut_only","mut_only_sub",S.mutOnly,function(v) S.mutOnly=v save() pcall(updateTargets) end)
+ makeToggle(sp,"mut_all","mut_all_sub",(function()
+  local n=0
+  for _,ty in ipairs(TYPES) do if HK.MUTTYPE[ty.text] and ty.on then n=n+1 end end
+  return n==3
+ end)(),function(v)
+  for i,ty in ipairs(TYPES) do
+   if HK.MUTTYPE[ty.text] then
+    ty.on=v
+    S.eggs[ty.text]=v or nil
+    if eggRows[i] then eggRows[i].paint(true) end
+   end
+  end
+  save()
+  pcall(updateTargets)
+ end)
+
  head(sp,"s_esp")
  makeToggle(sp,"s_hl","s_hl_sub",S.hl,function(v) S.hl=v save() end)
  makeToggle(sp,"s_hlo","s_hlo_sub",S.hlOutline,function(v) S.hlOutline=v save() end)
@@ -4179,11 +4248,12 @@ end
 --// =========================================================
 env.__ANTONIO_T0=tick()
 
--- Render-Loop: ESP-Anzeige (v3.4: kompakter Text = Name / "123 m  H 7.0")
+-- Render-Loop: ESP-Anzeige (v3.4: kompakter Text = Name / "123 m  H 7.0"; v4.2: Mutation)
 do
  local textT=0
  local rbI -- v4.1: Index des Rainbow-Eis (Regenbogenfarbe im ESP)
  for i,ty in ipairs(TYPES) do if ty.text=="rainbow egg" then rbI=i end end
+ local MUTCOL={Color3.fromRGB(255,200,0),Color3.fromRGB(100,230,255)}
  conn(RS.RenderStepped:Connect(function()
   local cam=workspace.CurrentCamera
   if not cam then return end
@@ -4224,6 +4294,23 @@ do
       if m.line then m.line.Color=ty.color end
      end
     end
+    -- v4.2: Mutation faerbt das Ei (Gold / Diamond / Rainbow)
+    local mut=m.mut or 0
+    if S.mutTag and mut>0 then
+     local mc=(mut==3) and rainbow or MUTCOL[mut]
+     m.mcOn=true
+     if m.lb then m.lb.TextColor3=mc end
+     if m.hl then m.hl.FillColor=mc end
+     if m.box then m.box.Color3=mc end
+     if m.line then m.line.Color=mc end
+    elseif m.mcOn then
+     m.mcOn=false
+     local base=ty.color
+     if m.lb then m.lb.TextColor3=base end
+     if m.hl then m.hl.FillColor=base end
+     if m.box then m.box.Color3=base end
+     if m.line then m.line.Color=base end
+    end
     if m.hl then
      m.hl.Enabled=show and S.hl and m.allow
      if show then
@@ -4243,7 +4330,11 @@ do
      m.lb.Font=fnt
      if doText then
       local lines={}
-      if S.showName then lines[#lines+1]=S.shortNames and (ty.name:gsub(" Egg","")) or ty.name end
+      if S.showName then
+       local nm=S.shortNames and (ty.name:gsub(" Egg","")) or ty.name
+       if S.mutTag and mut>0 then nm=nm.." ("..HK.MUTN[mut]..")" end
+       lines[#lines+1]=nm
+      end
       if S.showLuck then lines[#lines+1]="Luck "..ty.luck end
       local info={}
       if S.showDist then info[#info+1]=math.floor(d).." m" end
@@ -4347,4 +4438,4 @@ closeHub=function()
 end
 closeB.MouseButton1Click:Connect(function() closeHub() end)
 
-print("Antonio Hub v4.1 geladen")
+print("Antonio Hub v4.2 geladen")
