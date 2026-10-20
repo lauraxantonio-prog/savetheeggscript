@@ -1,4 +1,6 @@
---// ANTONIO HUB v4.3  (Start | ESP | Anzahl | Teleport | Visuals | Notifier | Webhook | Spieler | Spieler ESP | Performance | Tools | Autofarm | Home | Einstellungen)
+--// ANTONIO HUB v4.5  (Start | ESP | Anzahl | Teleport | Visuals | Notifier | Webhook | Spieler | Spieler ESP | Performance | Tools | Autofarm | Home | Einstellungen)
+--// v4.5: FIX ESP: Eier, die nicht mehr existieren, bleiben nicht mehr als "Geister"-ESP stehen. Gemerkte (entfernte) Eier werden verworfen, sobald du in die Naehe kommst (85 % der Streaming-Reichweite)
+--//       oder wenn die Merk-Dauer abgelaufen ist (neu: Einstellungen > Merk-Dauer entfernter Eier, Standard 300 s).
 --// v4.4: WEBHOOK NEU UND EINFACH: URL eintragen + speichern (bleibt fuer immer). Bei jedem Halloween / Skeleton / Bone King / Bone Demon / Thunder / Samurai / Demon Egg im Server wird ein Embed mit @everyone gesendet: Spiel-Link, Anzahl, Mutation (Normal / Gold / Diamant / Rainbow) und Groesse.
 --// v4.3: NEUER BEREICH "Spieler ESP": Box, Nametags (Name, Item, Entfernung, Leben), Lebensbalken, Tracer, Team-Check, Farbmodi,
 --//       Hitbox-Vergroesserung (HRP + optional Kopf), Spielerliste mit Teleport + Zuschauen. Alles wird beim Entladen zurueckgesetzt.
@@ -70,6 +72,8 @@ local S={
  peOn=false,peBox=true,peName=true,peDist=true,peHp=true,peTool=true,peTracer=true,peTOrigin=1,peTW=1,
  peTeam=false,peColor=1,peMax=0,peText=13,
  hbOn=false,hbSize=8,hbTrans=0.6,hbHead=false,hbTeam=true,
+ -- neu in v4.5 (Merk-Dauer entfernter Eier)
+ ghostTime=300,
 }
 do
  if canFile then
@@ -93,6 +97,7 @@ if S.espv<2 then
 end
 S.peColor=math.clamp(math.floor(S.peColor),1,4)
 S.peTOrigin=math.clamp(math.floor(S.peTOrigin),1,3)
+S.ghostTime=math.clamp(S.ghostTime,30,1800)
 local noSave,saveQueued=false,false
 local function save()
  if not canFile or saveQueued or noSave then return end
@@ -473,6 +478,7 @@ add("s_tw","Tracer-Dicke","Tracer thickness")
 add("ghost_tag","gemerkt (zuletzt gesehen)","remembered (last seen)")
 add("s_ghost","Entfernte Eier merken","Remember distant eggs")
 add("s_ghost_sub","Eier bleiben sichtbar, auch wenn das Spiel sie ausblendet","Eggs stay visible even when the game streams them out")
+add("s_ghostt","Merk-Dauer entfernter Eier","How long to remember distant eggs")
 add("s_names","Namens-Erkennung","Name detection")
 add("s_names_sub","Findet Eier auch ohne Prompt (Fallback, nur wenn sonst nichts erkannt wird)","Finds eggs even without a prompt (fallback, only if nothing else is detected)")
 add("esp_dist","ESP-Reichweite","ESP range")
@@ -1010,15 +1016,21 @@ local function updateTargets()
    seen[k]=true
   end
  end
+ -- v4.5 FIX: gemerkte ("Geister"-)Eier werden verworfen, wenn sie nicht mehr existieren.
+ -- Ein Ei, das nicht mehr gesehen wird, obwohl du innerhalb der Streaming-Reichweite bist, ist weg.
+ -- Zusätzlich verfällt jedes gemerkte Ei nach der eingestellten Merk-Dauer.
  local en,sr=streamingInfo()
- local rem=sr*0.6
+ local rem=sr*0.85
+ local cam0=workspace.CurrentCamera
+ local refPos=hrpPos or (cam0 and cam0.CFrame.Position)
+ local life=S.ghostTime or 300
  for k,e in pairs(cache) do
   if not seen[k] then
    e.live=false e.obj=nil
    local drop=false
    if not S.ghost or not en then drop=true
-   elseif hrpPos and (e.pos-hrpPos).Magnitude<rem then drop=true
-   elseif now-(e.t or now)>1800 then drop=true end
+   elseif refPos and (e.pos-refPos).Magnitude<rem then drop=true
+   elseif now-(e.t or now)>life then drop=true end
    if drop then cache[k]=nil end
   end
  end
@@ -2951,7 +2963,7 @@ end)()
     {name="📏 "..L("Größe","Size"),value=#ls>0 and cut(table.concat(ls,"\n"),1000) or "–",inline=false},
     {name="🔗 "..L("Spiel-Link","Game link"),value="**[▶ "..L("Server beitreten","Join server").."]("..joinLink()..")**\nJobId `"..game.JobId.."`",inline=false},
    },
-   footer={text="Antonio Hub v4.4  •  discord.gg/saveegg"},
+   footer={text="Antonio Hub v4.5  •  discord.gg/saveegg"},
    timestamp=os.date("!%Y-%m-%dT%H:%M:%SZ"),
   }
  end
@@ -4300,6 +4312,7 @@ do
   return FAMILIES[S.espFont].n
  end)
  makeToggle(sp,"s_ghost","s_ghost_sub",S.ghost,function(v) S.ghost=v save() if not v then clearGhosts() end end)
+ makeSlider(sp,"s_ghostt",30,1800,30,S.ghostTime,function(v) S.ghostTime=v save() end,nil,function(v) return v.." s" end)
  makeToggle(sp,"s_names","s_names_sub",S.nameScan,function(v) S.nameScan=v save() end)
  makeToggle(sp,"s_tracer","s_tracer_sub",S.tracers,function(v) S.tracers=v save() end)
  makeSegment(sp,"s_torigin",{"o_bottom","o_center","o_top"},S.tracerOrigin,function(i) S.tracerOrigin=i save() end)
@@ -4648,4 +4661,4 @@ closeHub=function()
 end
 closeB.MouseButton1Click:Connect(function() closeHub() end)
 
-print("Antonio Hub v4.4 geladen")
+print("Antonio Hub v4.5 geladen")
