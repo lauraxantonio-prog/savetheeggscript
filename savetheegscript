@@ -128,6 +128,8 @@ local TYPES={
  {name="Angel Egg",       text="angel egg",       luck="5B",   color=Color3.fromRGB(255,225,120)},
  {name="Galaxy Egg",      text="galaxy egg",      luck="20B",  color=Color3.fromRGB(170,90,255)},
  {name="Demon Egg",       text="demon egg",       luck="200B", color=Color3.fromRGB(190,20,20)},
+ {name="Samurai Egg",     text="samurai egg",     luck="500B", color=Color3.fromRGB(255,40,65)},
+ {name="Thunder Egg",     text="thunder egg",     luck="1T",   color=Color3.fromRGB(40,120,255)},
 }
 -- Beim allerersten Start sind alle Sorten AN.
 if not S.eggsInit and next(S.eggs)==nil then
