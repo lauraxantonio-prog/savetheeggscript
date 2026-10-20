@@ -1,4 +1,6 @@
---// ANTONIO HUB v4.0  (Start | ESP | Anzahl | Teleport | Visuals | Notifier | Webhook | Spieler | Performance | Tools | Autofarm | Home | Einstellungen)
+--// ANTONIO HUB v4.1  (Start | ESP | Anzahl | Teleport | Visuals | Notifier | Webhook | Spieler | Performance | Tools | Autofarm | Home | Einstellungen)
+--// v4.1: Aus "Little Helper" uebernommen: Fuse-Timer (Overlay + Cooldown, bleibt nach Rejoin erhalten, Meldung wenn bereit), Auto-Run, Baeume ausblenden,
+--//       Anti-AFK-Impuls mit Intervall, Ei-Pfade kopieren, Auto-Execute nach Server Hop/Rejoin, Rainbow-Ei mit Regenbogen-Farbe im ESP
 --// v4.0: Uebersetzung bereinigt (DE/EN 1:1, doppelte Texte entfernt, nichts mehr fest im Code). Visuals: FPS/Ping-HUD, Zoom-Limit aufheben, Kontrast, Ei-Jagd-Preset, Werte bleiben gespeichert.
 --//       Performance: Texturen/Wasser/andere Spieler ausblenden, Ton stumm, erweiterte Partikel-Abschaltung, RAM-Anzeige, FPS-Boost- und AFK-Preset
 --// v3.9: Configs (speichern / laden / exportieren / importieren) in den Einstellungen; Teleport in Schritten + Position halten; Rubberband-Schutz bei Fly/Speed/Jump/Noclip
@@ -55,6 +57,8 @@ local S={
  configs={},tpSafe=true,tpStep=70,tpDelay=0.06,tpHold=0.8,rbGuard=true,
  -- neu in v4.0 (Visuals / Performance merken sich ihre Werte)
  vBright=2,vClock=14,vSat=0.5,vContrast=0.1,vFov=90,vZoom=25,vMaxZoom=500,vHud=false,pCap=60,
+ -- neu in v4.1 (Fuse-Timer, Anti-AFK-Impuls, Auto-Execute, Rainbow-ESP)
+ fuseOn=false,fuseCD=60,fuseEnd=0,afkClick=false,afkInt=120,autoload="",rainbowEsp=true,
 }
 do
  if canFile then
@@ -314,6 +318,7 @@ add("jump","Sprungkraft","Jump power") add("jump_sub","Eingestellte Sprungstärk
 add("infjump","Infinite Jump","Infinite jump") add("infjump_sub","Springen in der Luft","Jump in mid-air")
 add("noclip","Noclip","Noclip") add("noclip_sub","Durch Wände laufen","Walk through walls")
 add("fly","Fliegen","Fly") add("fly_sub","WASD, Leertaste = hoch, Strg = runter","WASD, Space = up, Ctrl = down") add("fly_speed","Flug-Tempo","Fly speed")
+add("run","Auto-Run","Auto run") add("run_sub","Läuft automatisch vorwärts (WASD übernimmt die Steuerung)","Walks forward automatically (WASD takes over)")
 add("p_tp","Teleport & Charakter","Teleport & character")
 add("tp_egg","Zum nächsten Ei","To nearest egg") add("tp_none","Kein Ei gefunden","No egg found") add("tp_ok","Teleportiert zu %s","Teleported to %s")
 add("reset_char","Charakter zurücksetzen","Reset character")
@@ -333,6 +338,7 @@ add("part","Partikel aus","Particles off") add("part_sub","Partikel, Trails, Bea
 add("fx","Effekte aus","Effects off") add("fx_sub","Blur, Bloom, Sonnenstrahlen & Co.","Blur, bloom, sun rays & co.")
 add("mat","Materialien vereinfachen","Simplify materials") add("mat_sub","Alles glatt – spart Rechenleistung","Everything smooth – saves performance")
 add("tex","Texturen ausblenden","Hide textures") add("tex_sub","Decals & Texturen unsichtbar – spart Speicher","Decals & textures invisible – saves memory")
+add("tr_hide","Bäume ausblenden","Hide trees") add("tr_hide_sub","Bäume & Büsche unsichtbar – freie Sicht auf Eier","Trees & bushes invisible – clear view of eggs")
 add("water","Wasser vereinfachen","Simplify water") add("water_sub","Keine Wellen und Spiegelungen","No waves or reflections")
 add("hideplr","Andere Spieler ausblenden","Hide other players") add("hideplr_sub","Charaktere anderer Spieler unsichtbar – weniger Last","Other players' characters invisible – less load")
 add("qual","Niedrigste Grafikstufe","Lowest graphics level") add("qual_sub","Setzt die Qualität auf Stufe 1","Sets quality to level 1")
@@ -349,7 +355,14 @@ add("t_char","Charakter","Character")
 add("respawn","Respawn","Respawn") add("respawn_pos","Respawn (gleiche Stelle)","Respawn (same spot)") add("respawning","Respawne...","Respawning...")
 add("t_misc","Sonstiges","Misc")
 add("afk","Anti-AFK","Anti-AFK") add("afk_sub","Verhindert den Idle-Kick","Prevents the idle kick")
+add("afk_click","Anti-AFK Impuls","Anti-AFK pulse") add("afk_click_sub","Sendet zusätzlich regelmäßig einen Klick","Also sends a click regularly") add("afk_int","Impuls-Intervall","Pulse interval")
 add("copy_id","Server-ID kopieren","Copy server ID") add("copy_ok","Server-ID kopiert","Server ID copied") add("copy_na","Zwischenablage nicht verfügbar","Clipboard not available")
+add("paths_copy","Ei-Pfade kopieren","Copy egg paths") add("paths_ok","%d Pfade kopiert","%d paths copied") add("paths_none","Keine Eier markiert","No eggs marked")
+add("al_head","Auto-Execute","Auto execute")
+add("al_url","Skript-URL (https://...)","Script URL (https://...)")
+add("al_saved","URL gespeichert","URL saved") add("al_cleared","URL gelöscht","URL cleared")
+add("al_bad","Ungültige URL (https:// nötig, keine Anführungszeichen)","Invalid URL (needs https://, no quotes)")
+add("al_info","Lädt das Skript nach Server Hop und Rejoin automatisch neu (braucht queue_on_teleport). Leer lassen = aus.","Reloads the script after server hop and rejoin automatically (needs queue_on_teleport). Leave empty = off.")
 add("srv_search","Suche Server...","Searching servers...") add("srv_switch","Wechsle Server...","Switching server...")
 add("srv_tpfail","Teleport fehlgeschlagen","Teleport failed")
 add("srv_none","Kein Server gefunden, versuche Zufalls-Server...","No server found, trying a random one...")
@@ -375,6 +388,15 @@ add("a_status_on","Auto Quick-Event an","Auto quick event on") add("a_status_off
 add("a_clicked","Quick-Event geklickt (%d)","Quick event clicked (%d)")
 add("a_delay_set","Verzögerung: %ss","Delay: %ss")
 add("a_more","Weitere Autofarm-Module kommen demnächst.","More autofarm modules will go here soon.")
+-- Fuse-Timer
+add("fz_head","Fuse-Maschine","Fuse machine")
+add("fz_on","Fuse-Timer","Fuse timer") add("fz_on_sub","Overlay mit Cooldown – startet beim Benutzen der Maschine","Overlay with cooldown – starts when you use the machine")
+add("fz_min","Cooldown","Cooldown")
+add("fz_start","Timer jetzt starten","Start timer now") add("fz_reset","Timer zurücksetzen","Reset timer")
+add("fz_ready","Fuse: Bereit","Fuse: ready") add("fz_cd","Fuse: %s","Fuse: %s")
+add("fz_done","Fuse-Maschine ist wieder bereit!","Fuse machine is ready again!")
+add("fz_started","Fuse-Timer gestartet","Fuse timer started") add("fz_cleared","Fuse-Timer zurückgesetzt","Fuse timer reset")
+add("fz_info","Das Overlay lässt sich verschieben. Der Timer startet automatisch, wenn du die Fuse-Maschine benutzt, und läuft auch nach Server-Wechsel oder Rejoin weiter. Cooldown standardmäßig 60 Minuten.","The overlay can be dragged. The timer starts automatically when you use the fuse machine and keeps running after a server switch or rejoin. Default cooldown is 60 minutes.")
 -- Einstellungen
 add("s_lang","Sprache","Language") add("s_lang_t","Menüsprache","Menu language")
 add("lang_de","Deutsch","Deutsch") add("lang_en","English","English")
@@ -399,6 +421,7 @@ add("s_fill","Highlight-Transparenz","Highlight transparency")
 add("s_pulse","Pulsieren","Pulse") add("s_pulse_sub","Highlight blinkt sanft","Highlight fades softly in and out")
 add("s_name","Name anzeigen","Show name") add("s_luck","Luck anzeigen","Show luck") add("s_dist","Entfernung anzeigen","Show distance") add("s_size","Höhe anzeigen (H)","Show height (H)")
 add("s_short","Kurze Namen","Short names") add("s_short_sub","„Egg“ im ESP-Text weglassen","Drop “Egg” in the ESP text")
+add("s_rainbow","Rainbow-Ei in Regenbogenfarben","Rainbow egg in rainbow colors") add("s_rainbow_sub","Rainbow-Eier wechseln im ESP ständig die Farbe","Rainbow eggs cycle through colors in the ESP")
 
 add("s_tsize","ESP-Textgröße","ESP text size") add("s_efont","ESP-Schriftart","ESP font")
 add("s_maxd","Max. Entfernung","Max. distance") add("s_inf","Unbegrenzt","Unlimited")
@@ -435,7 +458,7 @@ add("cfg_nofile","Laden geht nur, wenn dein Executor Dateien speichern kann","Lo
 add("cfg_exported","Config in Zwischenablage kopiert","Config copied to clipboard")
 add("cfg_import_ok","Config importiert","Config imported")
 add("cfg_import_bad","Ungültiger Config-Text","Invalid config text")
-add("cfg_info","Speichert Design, ESP, Notifier, Teleport, Visuals usw. Webhook-URL, Home und Ping werden bewusst nicht mitgespeichert. Eintrag antippen = Name übernehmen. Nach dem Laden schließt sich der Hub, dann Skript neu ausführen.","Saves design, ESP, notifier, teleport, visuals etc. Webhook URL, home and ping are intentionally not included. Tap an entry to fill the name. After loading the hub closes, then run the script again.")
+add("cfg_info","Speichert Design, ESP, Notifier, Teleport, Visuals usw. Webhook-URL, Home, Ping, Fuse-Timer und Auto-Execute-URL werden bewusst nicht mitgespeichert. Eintrag antippen = Name übernehmen. Nach dem Laden schließt sich der Hub, dann Skript neu ausführen.","Saves design, ESP, notifier, teleport, visuals etc. Webhook URL, home, ping, fuse timer and auto-execute URL are intentionally not included. Tap an entry to fill the name. After loading the hub closes, then run the script again.")
 add("s_data","Daten","Data")
 add("s_save_info","Einstellungen werden automatisch gespeichert.","Settings are saved automatically.")
 add("s_save_na","Dein Executor kann keine Dateien speichern – Einstellungen gelten nur für diese Sitzung.","Your executor can't save files – settings only last for this session.")
@@ -1191,6 +1214,18 @@ local function httpGet(url)
  return nil
 end
 
+-- v4.1: Skript nach Server-Wechsel automatisch neu laden (URL in Tools > Auto-Execute)
+HK.validUrl=function(u)
+ return type(u)=="string" and u:sub(1,8)=="https://" and not u:find("[\"'%s\\]") and #u<=300
+end
+HK.queueLoad=function()
+ local u=S.autoload
+ if u=="" or not HK.validUrl(u) then return end
+ if type(queue_on_teleport)=="function" then
+  pcall(queue_on_teleport,'loadstring(game:HttpGet("'..u..'"))()')
+ end
+end
+
 local function serverHop()
  if hopping then return end
  hopping=true
@@ -1211,6 +1246,7 @@ local function serverHop()
    if #pool>0 then picked=pool[math.random(1,#pool)] end
   end)
   if not alive then return end
+  HK.queueLoad()
   if picked then
    setToolStatus(tr("srv_switch"))
    local ok=pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId,picked,P) end)
@@ -1231,6 +1267,7 @@ end))
 
 local function rejoin()
  setToolStatus(tr("rejoining"))
+ HK.queueLoad()
  pcall(function()
   if #Players:GetPlayers()<=1 then
    TeleportService:Teleport(game.PlaceId,P)
@@ -2895,7 +2932,7 @@ end)()
    description=cut(desc,3500),
    color=bestI and colorInt(TYPES[bestI].color) or 5197916,
    fields=fields,
-   footer={text="Antonio Hub v4.0  •  discord.gg/saveegg"},
+   footer={text="Antonio Hub v4.1  •  discord.gg/saveegg"},
    timestamp=os.date("!%Y-%m-%dT%H:%M:%SZ",now),
   }
  end
@@ -3119,7 +3156,7 @@ end)()
 --// ---------------- SPIELER ----------------
 do
  local pp=scroller(newPage("player"))
- local PL={speed=false,speedVal=32,jump=false,jumpVal=100,inf=false,noclip=false,fly=false,flySpeed=60}
+ local PL={speed=false,speedVal=32,jump=false,jumpVal=100,inf=false,noclip=false,fly=false,flySpeed=60,run=false}
  local origSpeed,origJump,origUseJP
  local ncOrig={}
 
@@ -3160,6 +3197,7 @@ do
   end
  end)
  makeSlider(pp,"fly_speed",20,200,10,PL.flySpeed,function(v) PL.flySpeed=v end)
+ makeToggle(pp,"run","run_sub",false,function(v) PL.run=v end)
  makeToggle(pp,"rb_guard","rb_guard_sub",S.rbGuard,function(v) S.rbGuard=v save() end)
 
  head(pp,"p_tp")
@@ -3214,6 +3252,11 @@ do
    if PL.jump then
     pcall(function() h.UseJumpPower=true h.JumpPower=PL.jumpVal end)
    end
+   -- Auto-Run (v4.1): läuft vorwärts, solange keine WASD-Taste gedrückt ist
+   if PL.run and not PL.fly and not UIS:GetFocusedTextBox() then
+    local manual=UIS:IsKeyDown(Enum.KeyCode.W) or UIS:IsKeyDown(Enum.KeyCode.A) or UIS:IsKeyDown(Enum.KeyCode.S) or UIS:IsKeyDown(Enum.KeyCode.D)
+    if not manual then pcall(function() h:Move(Vector3.new(0,0,-1),true) end) end
+   end
   end
   if PL.fly then
    local c=P.Character
@@ -3253,7 +3296,7 @@ do
   local h=hum()
   if PL.speed and h then pcall(function() h.WalkSpeed=origSpeed or 16 end) end
   if PL.jump and h then pcall(function() h.JumpPower=origJump or 50 h.UseJumpPower=(origUseJP==nil) and true or origUseJP end) end
-  PL.speed=false PL.jump=false PL.inf=false PL.noclip=false PL.fly=false
+  PL.speed=false PL.jump=false PL.inf=false PL.noclip=false PL.fly=false PL.run=false
   for p in pairs(ncOrig) do pcall(function() p.CanCollide=true end) end
  end
 end
@@ -3261,17 +3304,19 @@ end
 --// ---------------- PERFORMANCE (v4.0) ----------------
 ;(function()
  local fp=scroller(newPage("perf"))
- local PF={part=false,fx=false,mat=false,tex=false,hide=false,cap=false,capVal=S.pCap}
+ local PF={part=false,fx=false,mat=false,tex=false,tree=false,hide=false,cap=false,capVal=S.pCap}
  local shadowOrig,qualOrig,volOrig,waterOrig
  local pOff={}
  local fxOrig=setmetatable({},{__mode="k"})
  local matOrig=setmetatable({},{__mode="k"})
  local texOrig=setmetatable({},{__mode="k"})
+ local treeOrig=setmetatable({},{__mode="k"})
  local hidOrig=setmetatable({},{__mode="k"})
  local tg={}
  local capSlider
  local hasCap=(type(setfpscap)=="function")
  local FXCLS={ParticleEmitter=true,Trail=true,Beam=true,Fire=true,Smoke=true,Sparkles=true}
+ local TREEKEYS={"%f[%a]tree","%f[%a]baum","%f[%a]pine","%f[%a]oak","%f[%a]bush","%f[%a]foliage","%f[%a]leaves","%f[%a]leaf"}
 
  local function partDo(o)
   if FXCLS[o.ClassName] and o.Enabled then pOff[o]=true o.Enabled=false end
@@ -3288,6 +3333,25 @@ end
    if ch and o:IsDescendantOf(ch) then return end
    texOrig[o]=o.Transparency
    o.Transparency=1
+  end
+ end
+ -- v4.1: Bäume/Büsche ausblenden (Name des Teils oder der 3 Eltern-Objekte enthält ein Baum-Wort)
+ local function treeDo(o)
+  if not o:IsA("BasePart") or o:IsA("Terrain") or o.Transparency>=1 then return end
+  local ch=P.Character
+  if ch and o:IsDescendantOf(ch) then return end
+  local a=o
+  for _=1,4 do
+   if not a or a==workspace then return end
+   local nm=a.Name:lower()
+   for _,k in ipairs(TREEKEYS) do
+    if nm:find(k) then
+     treeOrig[o]=o.Transparency
+     o.Transparency=1
+     return
+    end
+   end
+   a=a.Parent
   end
  end
  local function fxDo(o)
@@ -3396,6 +3460,14 @@ end
    for o,t in pairs(texOrig) do pcall(function() o.Transparency=t end) texOrig[o]=nil end
   end
  end)
+ tg.tree=makeToggle(fp,"tr_hide","tr_hide_sub",false,function(v)
+  PF.tree=v
+  if v then
+   sweepMap("tree",treeDo)
+  else
+   for o,t in pairs(treeOrig) do pcall(function() o.Transparency=t end) treeOrig[o]=nil end
+  end
+ end)
  tg.water=makeToggle(fp,"water","water_sub",false,function(v) waterDo(v) end)
  tg.hide=makeToggle(fp,"hideplr","hideplr_sub",false,function(v)
   PF.hide=v
@@ -3418,12 +3490,13 @@ end
 
  -- neu hinzugekommene Objekte sofort mit behandeln
  conn(workspace.DescendantAdded:Connect(function(o)
-  if PF.part or PF.mat or PF.tex then
+  if PF.part or PF.mat or PF.tex or PF.tree then
    task.defer(function()
     if not o.Parent then return end
     if PF.part then pcall(partDo,o) end
     if PF.mat then pcall(matDo,o) end
     if PF.tex then pcall(texDo,o) end
+    if PF.tree then pcall(treeDo,o) end
    end)
   end
  end))
@@ -3498,7 +3571,7 @@ end
  end)
 
  restorers[#restorers+1]=function()
-  PF.part=false PF.fx=false PF.mat=false PF.tex=false PF.hide=false
+  PF.part=false PF.fx=false PF.mat=false PF.tex=false PF.tree=false PF.hide=false
   pcall(function() RS:Set3dRenderingEnabled(true) end)
   if shadowOrig~=nil then pcall(function() Lighting.GlobalShadows=shadowOrig end) end
   if qualOrig then pcall(function() settings().Rendering.QualityLevel=qualOrig end) end
@@ -3509,6 +3582,7 @@ end
   for o in pairs(fxOrig) do pcall(function() o.Enabled=true end) fxOrig[o]=nil end
   for o,m in pairs(matOrig) do pcall(function() o.Material=m end) matOrig[o]=nil end
   for o,t in pairs(texOrig) do pcall(function() o.Transparency=t end) texOrig[o]=nil end
+  for o,t in pairs(treeOrig) do pcall(function() o.Transparency=t end) treeOrig[o]=nil end
   for o in pairs(hidOrig) do pcall(function() o.LocalTransparencyModifier=0 end) hidOrig[o]=nil end
  end
 end)()
@@ -3525,6 +3599,27 @@ do
   if setclipboard then
    pcall(setclipboard,game.JobId)
    setToolStatus(tr("copy_ok"))
+  else
+   setToolStatus(tr("copy_na"))
+  end
+ end)
+ -- v4.1: Pfade aller markierten Eier kopieren (zum Debuggen / Melden falscher Treffer)
+ makeButton(tp,"paths_copy",Color3.fromRGB(70,74,100),function()
+  local out={}
+  for _,m in pairs(marks) do
+   local ty=TYPES[m.ti]
+   if m.obj then
+    local ok,path=pcall(function() return m.obj:GetFullName() end)
+    out[#out+1]=ty.name.." | "..m.obj.ClassName.." | "..(ok and path or "?")
+   elseif m.part then
+    local p=m.part.Position
+    out[#out+1]=string.format("%s | ghost | X %d Y %d Z %d",ty.name,math.floor(p.X),math.floor(p.Y),math.floor(p.Z))
+   end
+  end
+  if #out==0 then setToolStatus(tr("paths_none")) return end
+  if setclipboard then
+   pcall(setclipboard,table.concat(out,"\n"))
+   setToolStatus(trf("paths_ok",#out))
   else
    setToolStatus(tr("copy_na"))
   end
@@ -3559,8 +3654,56 @@ do
 
  head(tp,"t_misc")
  makeToggle(tp,"afk","afk_sub",true,nil,nil,"afk")
+ makeToggle(tp,"afk_click","afk_click_sub",S.afkClick,function(v) S.afkClick=v save() end)
+ makeSlider(tp,"afk_int",30,300,30,S.afkInt,function(v) S.afkInt=v save() end,nil,function(v) return v.." s" end)
  local toolStatus=makeLabelBox(tp,"ready",nil,44)
  setToolStatus=function(t) toolStatus.Text=t end
+
+ -- v4.1: regelmäßiger Anti-AFK-Impuls (zusätzlich zum Idle-Schutz)
+ task.spawn(function()
+  local last=tick()
+  while alive do
+   if afkOn and S.afkClick and tick()-last>=S.afkInt then
+    last=tick()
+    pcall(function() VU:CaptureController() VU:ClickButton2(Vector2.new()) end)
+   elseif not (afkOn and S.afkClick) then
+    last=tick()
+   end
+   task.wait(1)
+  end
+ end)
+
+ -- v4.1: Auto-Execute nach Server Hop / Rejoin
+ head(tp,"al_head")
+ do
+  local af=new("Frame",{Size=UDim2.new(1,0,0,38),BackgroundColor3=C.item,LayoutOrder=ord(tp)},tp)
+  round(af,10)
+  local afs=stroke(af,C.border,0.3)
+  local alBox=new("TextBox",{BackgroundTransparency=1,Position=UDim2.fromOffset(12,0),Size=UDim2.new(1,-24,1,0),Text=S.autoload,PlaceholderColor3=C.sub,
+   TextColor3=C.txt,Font=Enum.Font.GothamMedium,TextSize=12,ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left,
+   TextTruncate=Enum.TextTruncate.AtEnd},af)
+  reg(alBox,"al_url","PlaceholderText")
+  alBox.Focused:Connect(function() tw(afs,{Color=C.acc,Transparency=0}) end)
+  alBox.FocusLost:Connect(function()
+   tw(afs,{Color=C.border,Transparency=0.3})
+   local t=alBox.Text:gsub("^%s+",""):gsub("%s+$","")
+   if t=="" then
+    if S.autoload~="" then S.autoload="" save() notify(tr("al_cleared"),C.good,true) end
+    alBox.Text=""
+    return
+   end
+   if not HK.validUrl(t) then
+    alBox.Text=S.autoload
+    notify(tr("al_bad"),C.bad,true)
+    return
+   end
+   S.autoload=t
+   alBox.Text=t
+   save()
+   notify(tr("al_saved"),C.good,true)
+  end)
+  makeLabelBox(tp,"al_info",nil,52)
+ end
 
  head(tp,"t_sweep")
  makeSlider(tp,"sweep_r",1000,15000,500,S.sweepR,function(v) S.sweepR=v save() end,nil,function(v) return v.." m" end)
@@ -3596,6 +3739,111 @@ do
  local counter=makeLabelBox(fp,nil,nil,32)
  local farmStatus=makeLabelBox(fp,"ready",nil,40)
  setFarmStatus=function(t) farmStatus.Text=t end
+
+ --// ---- Fuse-Timer (v4.1, aus Little Helper) ----
+ -- Overlay mit Cooldown. Startet automatisch, wenn die Fuse-Maschine benutzt wird.
+ -- Das Ende wird als Zeitstempel gespeichert und läuft nach Server-Wechsel / Rejoin weiter.
+ head(fp,"fz_head")
+ local fz=raw("Frame",{Name="AntonioFuse",Size=UDim2.fromOffset(190,34),Position=UDim2.new(0.5,-95,0,70),BackgroundColor3=Color3.new(0,0,0),
+  BackgroundTransparency=0.3,BorderSizePixel=0,Visible=S.fuseOn,Active=true},gui)
+ round(fz,8)
+ local fzs=raw("UIStroke",{Color=C.acc,Thickness=1,Transparency=0.2,ApplyStrokeMode=Enum.ApplyStrokeMode.Border},fz)
+ local fzl=raw("TextLabel",{BackgroundTransparency=1,Size=UDim2.fromScale(1,1),Text="",TextColor3=Color3.new(1,1,1),Font=Enum.Font.GothamBold,TextSize=13},fz)
+ do
+  local dragging,dStart,sPos
+  fz.InputBegan:Connect(function(i)
+   if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+    dragging=true dStart=i.Position sPos=fz.Position
+    i.Changed:Connect(function() if i.UserInputState==Enum.UserInputState.End then dragging=false end end)
+   end
+  end)
+  conn(UIS.InputChanged:Connect(function(i)
+   if dragging and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
+    local d=i.Position-dStart
+    fz.Position=UDim2.new(sPos.X.Scale,sPos.X.Offset+d.X,sPos.Y.Scale,sPos.Y.Offset+d.Y)
+   end
+  end))
+ end
+ local fzWasRunning=(S.fuseEnd or 0)>os.time()
+ local function fuseLeft() return math.max(0,(S.fuseEnd or 0)-os.time()) end
+ local function fuseStart()
+  S.fuseEnd=os.time()+S.fuseCD*60
+  fzWasRunning=true
+  save()
+  notify(tr("fz_started"),C.good,true)
+ end
+ makeToggle(fp,"fz_on","fz_on_sub",S.fuseOn,function(v) S.fuseOn=v save() fz.Visible=v end)
+ makeSlider(fp,"fz_min",5,120,5,S.fuseCD,function(v) S.fuseCD=v save() end,nil,function(v) return v.." min" end)
+ local fzg=new("Frame",{Size=UDim2.new(1,0,0,38),BackgroundTransparency=1,LayoutOrder=ord(fp)},fp)
+ new("UIGridLayout",{CellSize=UDim2.new(0.5,-5,0,38),CellPadding=UDim2.fromOffset(10,10),SortOrder=Enum.SortOrder.LayoutOrder},fzg)
+ makeButton(fzg,"fz_start","acc",function() fuseStart() end,1)
+ makeButton(fzg,"fz_reset","bad",function()
+  S.fuseEnd=0
+  fzWasRunning=false
+  save()
+  notify(tr("fz_cleared"),C.good,true)
+ end,2)
+ makeLabelBox(fp,"fz_info",nil,76)
+
+ -- Maschine erkennen: ProximityPrompts mit "fuse/fusion/maschin/machine" im Text
+ do
+  local hooked=setmetatable({},{__mode="k"})
+  local checked=setmetatable({},{__mode="k"})
+  local function isFuse(p)
+   local t=((p.ObjectText or "").." "..(p.ActionText or "")):lower()
+   return t:find("fuse",1,true) or t:find("fusion",1,true) or t:find("maschin",1,true) or t:find("machine",1,true)
+  end
+  task.spawn(function()
+   local lastReset=tick()
+   while alive do
+    if S.fuseOn then
+     if tick()-lastReset>30 then
+      lastReset=tick()
+      for k in pairs(checked) do checked[k]=nil end
+     end
+     for p in pairs(prompts) do
+      if p.Parent and not hooked[p] and not checked[p] then
+       checked[p]=true
+       if isFuse(p) then
+        hooked[p]=true
+        conn(p.Triggered:Connect(function(plr)
+         if S.fuseOn and (plr==nil or plr==P) then fuseStart() end
+        end))
+       end
+      end
+     end
+    end
+    task.wait(3)
+   end
+  end)
+ end
+
+ -- Anzeige + Meldung, wenn der Cooldown abgelaufen ist
+ task.spawn(function()
+  while alive do
+   local left=fuseLeft()
+   if left>0 then
+    local h,m,s=math.floor(left/3600),math.floor(left/60)%60,left%60
+    local t=(h>0) and string.format("%d:%02d:%02d",h,m,s) or string.format("%02d:%02d",m,s)
+    fzl.Text=trf("fz_cd",t)
+    fzl.TextColor3=C.acc2
+    fzs.Color=C.acc2
+    fzWasRunning=true
+   else
+    fzl.Text=tr("fz_ready")
+    fzl.TextColor3=C.good
+    fzs.Color=C.good
+    if fzWasRunning then
+     fzWasRunning=false
+     if S.fuseEnd~=0 then S.fuseEnd=0 save() end
+     if S.fuseOn then notify(tr("fz_done"),C.good) end
+    end
+   end
+   task.wait(0.5)
+  end
+ end)
+ restorers[#restorers+1]=function() pcall(function() fz:Destroy() end) end
+
  makeLabelBox(fp,"a_more",nil,52)
 
  task.spawn(function()
@@ -3762,6 +4010,7 @@ do
  makeToggle(sp,"s_pulse","s_pulse_sub",S.pulse,function(v) S.pulse=v save() end)
  makeToggle(sp,"s_name",nil,S.showName,function(v) S.showName=v save() end)
  makeToggle(sp,"s_short","s_short_sub",S.shortNames,function(v) S.shortNames=v save() end)
+ makeToggle(sp,"s_rainbow","s_rainbow_sub",S.rainbowEsp,function(v) S.rainbowEsp=v save() end)
  makeToggle(sp,"s_luck",nil,S.showLuck,function(v) S.showLuck=v save() end)
  makeToggle(sp,"s_dist",nil,S.showDist,function(v) S.showDist=v save() end)
  makeToggle(sp,"s_size",nil,S.showSize,function(v) S.showSize=v save() end)
@@ -3791,7 +4040,7 @@ do
  --// ---------------- CONFIGS (v3.9) ----------------
  head(sp,"cfg_head")
  do
-  local SKIP={configs=true,nfHook=true,hkMsgId=true,hkMsgJob=true,hkPing=true,homes=true,eggsInit=true,nfInit=true,espv=true,whv=true}
+  local SKIP={configs=true,nfHook=true,hkMsgId=true,hkMsgJob=true,hkPing=true,homes=true,eggsInit=true,nfInit=true,espv=true,whv=true,fuseEnd=true,autoload=true}
   local function deep(v)
    if type(v)~="table" then return v end
    local t={}
@@ -3933,6 +4182,8 @@ env.__ANTONIO_T0=tick()
 -- Render-Loop: ESP-Anzeige (v3.4: kompakter Text = Name / "123 m  H 7.0")
 do
  local textT=0
+ local rbI -- v4.1: Index des Rainbow-Eis (Regenbogenfarbe im ESP)
+ for i,ty in ipairs(TYPES) do if ty.text=="rainbow egg" then rbI=i end end
  conn(RS.RenderStepped:Connect(function()
   local cam=workspace.CurrentCamera
   if not cam then return end
@@ -3942,6 +4193,7 @@ do
   local hrp=c and c:FindFirstChild("HumanoidRootPart")
   local ref=hrp and hrp.Position or cam.CFrame.Position
   local pulse=math.abs(math.sin(now*3))
+  local rainbow=Color3.fromHSV((now*0.5)%1,1,1)
   local origin
   if S.tracerOrigin==2 then origin=Vector2.new(vs.X/2,vs.Y/2)
   elseif S.tracerOrigin==3 then origin=Vector2.new(vs.X/2,0)
@@ -3956,6 +4208,22 @@ do
     local d=(part.Position-ref).Magnitude
     local show=S.espOn and (S.maxDist<=0 or d<=S.maxDist)
     m.bb.Enabled=show
+    -- Rainbow-Ei: Farbe wechselt durchs Spektrum (abschaltbar in den Einstellungen)
+    if rbI and m.ti==rbI then
+     if S.rainbowEsp then
+      m.rbOn=true
+      if m.lb then m.lb.TextColor3=rainbow end
+      if m.hl then m.hl.FillColor=rainbow end
+      if m.box then m.box.Color3=rainbow end
+      if m.line then m.line.Color=rainbow end
+     elseif m.rbOn then
+      m.rbOn=false
+      if m.lb then m.lb.TextColor3=ty.color end
+      if m.hl then m.hl.FillColor=ty.color end
+      if m.box then m.box.Color3=ty.color end
+      if m.line then m.line.Color=ty.color end
+     end
+    end
     if m.hl then
      m.hl.Enabled=show and S.hl and m.allow
      if show then
@@ -4079,4 +4347,4 @@ closeHub=function()
 end
 closeB.MouseButton1Click:Connect(function() closeHub() end)
 
-print("Antonio Hub v4.0 geladen")
+print("Antonio Hub v4.1 geladen")
