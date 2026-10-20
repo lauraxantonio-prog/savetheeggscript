@@ -1,4 +1,6 @@
---// ANTONIO HUB v3.9  (Start | ESP | Anzahl | Teleport | Visuals | Notifier | Webhook | Spieler | Performance | Tools | Autofarm | Home | Einstellungen)
+--// ANTONIO HUB v4.0  (Start | ESP | Anzahl | Teleport | Visuals | Notifier | Webhook | Spieler | Performance | Tools | Autofarm | Home | Einstellungen)
+--// v4.0: Uebersetzung bereinigt (DE/EN 1:1, doppelte Texte entfernt, nichts mehr fest im Code). Visuals: FPS/Ping-HUD, Zoom-Limit aufheben, Kontrast, Ei-Jagd-Preset, Werte bleiben gespeichert.
+--//       Performance: Texturen/Wasser/andere Spieler ausblenden, Ton stumm, erweiterte Partikel-Abschaltung, RAM-Anzeige, FPS-Boost- und AFK-Preset
 --// v3.9: Configs (speichern / laden / exportieren / importieren) in den Einstellungen; Teleport in Schritten + Position halten; Rubberband-Schutz bei Fly/Speed/Jump/Noclip
 --// v3.8: Webhook neu: ein Live-Embed (Demon/Galaxy/Angel mit Anzahl, Groesse, Entfernung, Zeit, Datum, Server-Infos, Join-Link) wird alle 30 s bearbeitet; neuer Server = neues Embed; Ping bei neuem Ei
 --// v3.7: Neuer Bereich Webhook: URL speichern (bleibt dauerhaft), sendet automatisch jede Minute die Liste aller Eier im Server nach Discord
@@ -51,6 +53,8 @@ local S={
  hkOn=true,hkInterval=30,hkPos=false,hkMsgId="",hkMsgJob="",hkPing="",whv=0,
  -- neu in v3.9
  configs={},tpSafe=true,tpStep=70,tpDelay=0.06,tpHold=0.8,rbGuard=true,
+ -- neu in v4.0 (Visuals / Performance merken sich ihre Werte)
+ vBright=2,vClock=14,vSat=0.5,vContrast=0.1,vFov=90,vZoom=25,vMaxZoom=500,vHud=false,pCap=60,
 }
 do
  if canFile then
@@ -142,7 +146,7 @@ end
 S.nfInit=true
 
 --// =========================================================
---// SPRACHE
+--// SPRACHE (Deutsch / English) - jeder Text steht NUR hier, in beiden Sprachen
 --// =========================================================
 local D={de={},en={}}
 local function add(k,de,en) D.de[k]=de D.en[k]=en end
@@ -173,7 +177,7 @@ add("found_none","Noch keine Eier gefunden. Der Hub scannt automatisch weiter.",
 add("st_mods","Module","Modules")
 add("m_esp","ESP","ESP") add("m_notify","Notifier","Notifier") add("m_quick","Quick-Event","Quick event") add("m_afk","Anti-AFK","Anti-AFK")
 add("st_tip","Credits","Credits")
-add("tip_title","Gemacht mit Liebe von Antonio","Made with Love by Antonio")
+add("tip_title","Mit Liebe gemacht von Antonio","Made with love by Antonio")
 add("tip1","Trete unserem Discord bei: discord.gg/saveegg","Join our Discord: discord.gg/saveegg")
 add("tip2","Alle wichtigen Infos und Updates findest du auf discord.gg/saveegg","Find all important information and updates at discord.gg/saveegg")
 add("tip3","Verpasse keine Neuigkeiten und schau auf discord.gg/saveegg vorbei","Don't miss any news – check out discord.gg/saveegg")
@@ -197,7 +201,6 @@ add("c_empty","Keine Eier gefunden – scanne neu im ESP-Tab.","No eggs found �
 -- Teleport
 add("tp_rare","Zum seltensten Ei","To rarest egg")
 add("tp_status","Klick auf ein Ei = Teleport genau zu diesem Ei.","Click an egg = teleport to exactly that egg.")
-add("tp_none_type","%s: kein Ei im Server bekannt","%s: no egg known in this server")
 add("tp_sort_luck","Sort: Luck","Sort: Luck") add("tp_sort_dist","Sort: Nähe","Sort: Distance")
 add("tp_home","Zu Home","To home")
 add("tp_count","%d von %d Eiern angezeigt","%d of %d eggs shown")
@@ -213,6 +216,7 @@ add("h_set","Home hier setzen","Set home here")
 add("h_tp","Zu Home teleportieren","Teleport to home")
 add("h_clear","Home löschen","Delete home")
 add("h_marker","Home-Markierung","Home marker") add("h_marker_sub","Zeigt dein Home mit Entfernung in der Welt an","Shows your home with distance in the world")
+add("h_label","Home","Home")
 add("h_set_ok","Home gesetzt!","Home set!")
 add("h_cleared","Home gelöscht","Home deleted")
 add("h_tp_ok","Zu Home teleportiert","Teleported home")
@@ -222,15 +226,23 @@ add("h_info_na","Dein Executor kann keine Dateien speichern – Home gilt nur f�
 add("h_hide","Eier im Radius ausblenden","Hide eggs in radius") add("h_hide_sub","Eier um dein Home verschwinden aus ESP, Teleport & Listen","Eggs around your home vanish from ESP, teleport & lists")
 add("h_radius","Home-Radius","Home radius")
 -- Visuals
+add("v_preset","Presets","Presets")
+add("v_scout","Ei-Jagd-Preset","Egg hunt preset")
+add("v_reset","Visuals zurücksetzen","Reset visuals")
 add("v_light","Beleuchtung","Lighting")
 add("fullbright","Fullbright","Fullbright") add("fb_sub","Alles dauerhaft hell","Keeps everything bright") add("fb_bright","Helligkeit","Brightness")
 add("nofog","Kein Nebel","No fog") add("nofog_sub","Entfernt Nebel und Atmosphäre","Removes fog and atmosphere")
 add("timefix","Tageszeit fixieren","Lock time of day") add("timefix_sub","Hält die Uhrzeit konstant","Keeps the clock constant") add("clock","Uhrzeit","Time")
 add("v_color","Farben","Colors")
 add("colboost","Farb-Boost","Color boost") add("colboost_sub","Sattere Farben und mehr Kontrast","Richer colors and more contrast") add("sat","Sättigung","Saturation")
+add("contrast","Kontrast","Contrast")
 add("v_cam","Kamera","Camera")
 add("fov_on","FOV ändern","Change FOV") add("fov_sub","Wendet das eingestellte Sichtfeld an","Applies the selected field of view") add("fov_val","Sichtfeld (FOV)","Field of view (FOV)")
 add("zoom","Zoom (Taste C halten)","Zoom (hold C)") add("zoom_sub","Heranzoomen, um Eier früher zu sehen","Zoom in to spot eggs earlier") add("zoom_fov","Zoom-Stärke (FOV)","Zoom strength (FOV)")
+add("zlim","Zoom-Limit aufheben","Remove zoom limit") add("zlim_sub","Kamera darf viel weiter herauszoomen (Mausrad)","Camera may zoom out much further (mouse wheel)") add("zlim_val","Max. Kameradistanz","Max camera distance")
+add("v_hud","Anzeige","Overlay")
+add("hud","FPS/Ping-Anzeige","FPS/ping overlay") add("hud_sub","Kleines Overlay mit FPS, Ping und Eier – auch bei verstecktem Menü","Small overlay with FPS, ping and eggs – even with the menu hidden")
+add("hud_text","FPS %s  •  Ping %s  •  Eier %d  •  Markiert %d","FPS %s  •  Ping %s  •  Eggs %d  •  Marked %d")
 -- Notifier
 add("n_head","Benachrichtigung","Notification")
 add("n_on","Notifier aktiv","Notifier active") add("n_on_sub","Meldung, wenn ein gewünschtes Ei auftaucht","Alert when a wanted egg appears")
@@ -245,14 +257,9 @@ add("n_sound","Sound","Sound") add("n_sound_sub","Kurzer Ton bei jeder Meldung",
 add("n_exist","Vorhandene Eier melden","Report existing eggs") add("n_exist_sub","Beim Einschalten auch Eier melden, die schon da sind","Also report eggs that are already there when enabled")
 add("n_autotp","Auto-Teleport","Auto teleport") add("n_autotp_sub","Teleportiert dich zum seltensten gemeldeten Ei","Teleports you to the rarest reported egg")
 add("n_dist","Max. Entfernung","Max. distance")
-add("n_hook_head","Discord-Webhook","Discord webhook")
-add("n_hook_on","Webhook senden","Send webhook") add("n_hook_on_sub","Meldung auch an Discord schicken (z. B. beim AFK)","Also send alerts to Discord (e.g. while AFK)")
-add("n_hook_url","Webhook-URL einfügen...","Paste webhook URL...")
-add("n_hook_test","Webhook testen","Test webhook")
 add("n_hook_ok","Webhook gesendet","Webhook sent") add("n_hook_bad","Ungültige Webhook-URL","Invalid webhook URL")
 add("n_hook_na","Dein Executor kann keine HTTP-Anfragen senden","Your executor can't send HTTP requests")
 add("n_hook_fail","Webhook fehlgeschlagen","Webhook failed")
-add("n_hook_info","Die URL wird in deiner Einstellungsdatei gespeichert – teile sie mit niemandem. Die Meldung enthält Server-ID und Join-Code.","The URL is stored in your settings file – never share it. The message includes server ID and join code.")
 add("n_info","Gemeldet wird unabhängig vom ESP-Schalter. Tipp: Auf eine Meldung oder einen Verlaufs-Eintrag tippen = Teleport zum Ei.","Alerts work regardless of the ESP switch. Tip: tap an alert or a history entry to teleport to the egg.")
 add("n_log","Verlauf","History")
 add("n_log_none","Noch nichts gemeldet.","Nothing reported yet.")
@@ -266,20 +273,28 @@ add("wh_save","Speichern","Save") add("wh_clear","Löschen","Delete")
 add("wh_saved","Webhook gespeichert","Webhook saved") add("wh_cleared","Webhook gelöscht","Webhook deleted")
 add("wh_cur","Gespeichert  •  …%s","Saved  •  …%s")
 add("wh_none","Noch kein Webhook gespeichert.","No webhook saved yet.")
-add("wh_list_head","Eier-Liste","Egg list")
-add("wh_auto","Eier-Liste senden","Send egg list") add("wh_auto_sub","Sendet regelmäßig alle Eier im Server an Discord","Regularly sends all eggs in the server to Discord")
+add("wh_list_head","Live-Embed","Live embed")
+add("wh_auto","Live-Embed senden","Send live embed")
+add("wh_auto_sub","Ein Embed in Discord wird laufend aktualisiert (auch beim AFK)","One embed in Discord is updated continuously (even while AFK)")
 add("wh_int","Intervall","Interval")
-add("wh_pos","Positionen mitsenden","Include positions") add("wh_pos_sub","Koordinaten der Eier (max. 5 pro Sorte)","Egg coordinates (max. 5 per type)")
-add("wh_now","Liste jetzt senden","Send list now") add("wh_test","Webhook testen","Test webhook")
+add("wh_pos","Positionen mitsenden","Include positions") add("wh_pos_sub","Koordinaten der Eier (max. 4 pro Sorte)","Egg coordinates (max. 4 per type)")
+add("wh_now","Embed jetzt aktualisieren","Update embed now")
+add("wh_new","Neues Embed erzwingen","Force new embed")
+add("wh_new_ok","Neues Embed wird erstellt","Creating a new embed")
+add("wh_test","Webhook testen","Test webhook")
+add("wh_ping_head","Ping bei neuem Ei","Ping on new egg")
+add("wh_ping_ph","User-ID, &Rollen-ID oder everyone (leer = aus)","User ID, &role ID or everyone (empty = off)")
+add("wh_ping_saved","Ping gespeichert","Ping saved")
+add("wh_ping_bad","Ungültig: User-ID, &Rollen-ID oder everyone","Invalid: user ID, &role ID or everyone")
 add("wh_alert_head","Sofort-Meldung","Instant alert")
 add("wh_alert","Meldung bei Fund","Alert on find") add("wh_alert_sub","Gefundene Eier aus dem Notifier sofort an Discord senden","Send eggs found by the notifier to Discord right away")
-add("wh_status_ok","Zuletzt gesendet: %s  •  %d Listen gesendet","Last sent: %s  •  %d lists sent")
-add("wh_status_bad","Senden fehlgeschlagen um %s  •  %d Listen gesendet","Sending failed at %s  •  %d lists sent")
+add("wh_rate","Discord-Limit erreicht, später erneut","Discord rate limit, retrying later")
+add("wh_status_ok","Zuletzt gesendet: %s  •  %d Updates","Last sent: %s  •  %d updates")
+add("wh_status_bad","Senden fehlgeschlagen um %s  •  %d Updates","Sending failed at %s  •  %d updates")
 add("wh_status_none","Noch nichts gesendet.","Nothing sent yet.")
-add("wh_msg_none","Aktuell keine Eier im Server.","No eggs in the server right now.")
 add("wh_more","+%d weitere","+%d more")
 add("wh_test_msg","Antonio Hub: Webhook verbunden.","Antonio Hub: webhook connected.")
-add("wh_info","Die URL wird in deiner Einstellungsdatei gespeichert und beim nächsten Start automatisch geladen. Gesendet wird, solange das Skript läuft – auch wenn das Menü versteckt ist (Menü-Taste). Mit X wird alles beendet. Teile die URL mit niemandem.","The URL is stored in your settings file and loaded automatically next time. Sending continues while the script runs – even with the menu hidden (menu key). X stops everything. Never share the URL.")
+add("wh_info","Das Embed zeigt Demon, Galaxy und Angel mit Anzahl, Größe, Entfernung, Uhrzeit, Datum, Server-Infos und Join-Link. Es wird alle paar Sekunden im selben Discord-Beitrag aktualisiert; in einem neuen Server entsteht automatisch ein neues Embed. URL und Embed-ID werden gespeichert. Läuft auch bei verstecktem Menü. Teile die URL mit niemandem.","The embed shows Demon, Galaxy and Angel with count, size, distance, time, date, server info and join link. It is updated every few seconds in the same Discord post; a new server automatically creates a new embed. URL and embed ID are saved. Keeps running with the menu hidden. Never share the URL.")
 add("wh_info_na","Dein Executor kann keine Dateien speichern – die URL gilt nur für diese Sitzung.","Your executor can't save files – the URL only lasts for this session.")
 -- Spieler
 add("p_move","Bewegung","Movement")
@@ -291,22 +306,32 @@ add("fly","Fliegen","Fly") add("fly_sub","WASD, Leertaste = hoch, Strg = runter"
 add("p_tp","Teleport & Charakter","Teleport & character")
 add("tp_egg","Zum nächsten Ei","To nearest egg") add("tp_none","Kein Ei gefunden","No egg found") add("tp_ok","Teleportiert zu %s","Teleported to %s")
 add("reset_char","Charakter zurücksetzen","Reset character")
+add("rb_guard","Rubberband-Schutz","Rubberband guard")
+add("rb_guard_sub","Setzt dich zurück, wenn der Server dich zieht; senkt bei Dauerproblemen das Tempo","Snaps you back when the server pulls you; lowers speed if it keeps happening")
+add("rb_reduced","Server zieht dich zurück – Tempo reduziert","Server keeps pulling you back – speed reduced")
 -- Performance
 add("f_live","Live","Live")
-add("f_live_t","FPS %s  •  Ping %s","FPS %s  •  Ping %s")
+add("f_live_t","FPS %s  •  Ping %s  •  RAM %s MB","FPS %s  •  Ping %s  •  RAM %s MB")
+add("f_preset","Presets","Presets")
+add("boost_preset","FPS-Boost-Preset","FPS boost preset")
+add("afk_preset","AFK-Preset","AFK preset")
+add("reset_all","Alles zurücksetzen","Reset everything")
 add("f_gfx","Grafik","Graphics")
 add("shadows","Schatten aus","Shadows off") add("shadows_sub","Weniger GPU-Last","Less GPU load")
-add("part","Partikel aus","Particles off") add("part_sub","Deaktiviert Partikel-Effekte","Disables particle effects")
+add("part","Partikel aus","Particles off") add("part_sub","Partikel, Trails, Beams, Feuer & Rauch aus","Particles, trails, beams, fire & smoke off")
 add("fx","Effekte aus","Effects off") add("fx_sub","Blur, Bloom, Sonnenstrahlen & Co.","Blur, bloom, sun rays & co.")
 add("mat","Materialien vereinfachen","Simplify materials") add("mat_sub","Alles glatt – spart Rechenleistung","Everything smooth – saves performance")
+add("tex","Texturen ausblenden","Hide textures") add("tex_sub","Decals & Texturen unsichtbar – spart Speicher","Decals & textures invisible – saves memory")
+add("water","Wasser vereinfachen","Simplify water") add("water_sub","Keine Wellen und Spiegelungen","No waves or reflections")
+add("hideplr","Andere Spieler ausblenden","Hide other players") add("hideplr_sub","Charaktere anderer Spieler unsichtbar – weniger Last","Other players' characters invisible – less load")
 add("qual","Niedrigste Grafikstufe","Lowest graphics level") add("qual_sub","Setzt die Qualität auf Stufe 1","Sets quality to level 1")
 add("f_limit","Limits","Limits")
 add("cap","FPS-Limit","FPS cap") add("cap_sub","Begrenzt die Bildrate","Caps the frame rate") add("cap_val","Max. FPS","Max FPS")
 add("cap_na","FPS-Limit wird von deinem Executor nicht unterstützt.","FPS cap isn't supported by your executor.")
 add("f_afk","AFK-Modus","AFK mode")
+add("mute","Ton stumm","Mute sound") add("mute_sub","Setzt die Master-Lautstärke auf 0","Sets the master volume to 0")
 add("render3d","3D-Rendering aus","3D rendering off") add("render3d_sub","Schwarzer Bildschirm, spart extrem viel Leistung","Black screen, saves a huge amount of performance")
-add("afk_preset","AFK-Preset anwenden","Apply AFK preset") add("reset_all","Alles zurücksetzen","Reset everything")
-add("f_tip","Preset: Schatten, Partikel, Effekte und 3D-Rendering aus. Beim Entladen wird alles zurückgesetzt.","Preset: shadows, particles, effects and 3D rendering off. Everything is restored on unload.")
+add("f_tip","FPS-Boost: Schatten, Partikel, Effekte, Texturen, Wasser, andere Spieler und niedrigste Grafikstufe. AFK-Preset: zusätzlich Ton stumm, FPS-Limit 20 und 3D-Rendering aus. Beim Entladen wird alles zurückgesetzt.","FPS boost: shadows, particles, effects, textures, water, other players and lowest graphics level. AFK preset: additionally mute, FPS cap 20 and 3D rendering off. Everything is restored on unload.")
 -- Tools
 add("t_server","Server","Server") add("hop","Server Hop","Server hop") add("rejoin","Rejoin","Rejoin")
 add("t_char","Charakter","Character")
@@ -320,6 +345,16 @@ add("srv_none","Kein Server gefunden, versuche Zufalls-Server...","No server fou
 add("srv_hopfail","Server Hop fehlgeschlagen","Server hop failed")
 add("srv_retry","Server-Wechsel fehlgeschlagen, nochmal versuchen","Server switch failed, try again")
 add("rejoining","Rejoin...","Rejoining...")
+add("t_sweep","Fern-Scan","Far scan")
+add("sweep_r","Sweep-Radius","Sweep radius")
+add("sweep_btn","Karte nach Eiern absuchen","Sweep map for eggs")
+add("sweep_stop","Sweep stoppen","Stop sweep")
+add("sweep_prog","Sweep: %d/%d  •  %d Eier bekannt","Sweep: %d/%d  •  %d eggs known")
+add("sweep_done","Sweep beendet – %d Eier bekannt","Sweep finished – %d eggs known")
+add("sweep_na","Dein Executor/Spiel unterstützt RequestStreamAroundAsync nicht.","Your executor/game doesn't support RequestStreamAroundAsync.")
+add("sweep_off","Streaming ist in diesem Spiel aus – alle Eier werden schon erkannt.","Streaming is off in this game – all eggs are already detected.")
+add("sweep_info","Lädt die Map Stück für Stück nach, damit weit entfernte Eier erkannt und gemerkt werden. Kann kurz ruckeln.","Loads the map piece by piece so far-away eggs get detected and remembered. May stutter briefly.")
+add("esp_cache_clear","Gemerkte Eier leeren","Clear remembered eggs")
 -- Autofarm
 add("a_head","Quick-Event","Quick event")
 add("a_on","Auto Quick-Event (x3)","Auto quick event (x3)") add("a_on_sub","Klickt die x3-Buttons automatisch","Clicks the x3 buttons automatically")
@@ -353,40 +388,26 @@ add("s_fill","Highlight-Transparenz","Highlight transparency")
 add("s_pulse","Pulsieren","Pulse") add("s_pulse_sub","Highlight blinkt sanft","Highlight fades softly in and out")
 add("s_name","Name anzeigen","Show name") add("s_luck","Luck anzeigen","Show luck") add("s_dist","Entfernung anzeigen","Show distance") add("s_size","Höhe anzeigen (H)","Show height (H)")
 add("s_short","Kurze Namen","Short names") add("s_short_sub","„Egg“ im ESP-Text weglassen","Drop “Egg” in the ESP text")
-add("size","Größe","Size")
+
 add("s_tsize","ESP-Textgröße","ESP text size") add("s_efont","ESP-Schriftart","ESP font")
 add("s_maxd","Max. Entfernung","Max. distance") add("s_inf","Unbegrenzt","Unlimited")
 add("s_tracer","Tracer","Tracers") add("s_tracer_sub","Linie zu jedem Ei (Drawing nötig)","Line to every egg (needs Drawing)")
 add("s_torigin","Tracer-Start","Tracer origin")
 add("o_bottom","Unten","Bottom") add("o_center","Mitte","Center") add("o_top","Oben","Top")
 add("s_tw","Tracer-Dicke","Tracer thickness")
-add("s_tpsec","Teleport & Scan","Teleport & scan")
-add("s_tph","Teleport-Höhe","Teleport height")
-add("s_scani","Auto-Scan Intervall","Auto-scan interval")
-add("s_notif","Benachrichtigungen","Notifications") add("s_ttime","Anzeigedauer","Display time")
-add("s_data","Daten","Data")
-add("s_save_info","Einstellungen werden automatisch gespeichert.","Settings are saved automatically.")
-add("s_save_na","Dein Executor kann keine Dateien speichern – Einstellungen gelten nur für diese Sitzung.","Your executor can't save files – settings only last for this session.")
-add("s_reset","Einstellungen zurücksetzen","Reset settings")
-add("s_reset_msg","Zurückgesetzt – bitte Skript neu ausführen","Reset – please run the script again")
-add("s_unload","Hub entladen","Unload hub")
 add("ghost_tag","gemerkt (zuletzt gesehen)","remembered (last seen)")
 add("s_ghost","Entfernte Eier merken","Remember distant eggs")
 add("s_ghost_sub","Eier bleiben sichtbar, auch wenn das Spiel sie ausblendet","Eggs stay visible even when the game streams them out")
 add("s_names","Namens-Erkennung","Name detection")
 add("s_names_sub","Findet Eier auch ohne Prompt (Fallback, nur wenn sonst nichts erkannt wird)","Finds eggs even without a prompt (fallback, only if nothing else is detected)")
 add("esp_dist","ESP-Reichweite","ESP range")
-add("esp_cache_clear","Gemerkte Eier leeren","Clear remembered eggs")
-add("t_sweep","Fern-Scan","Far scan")
-add("sweep_r","Sweep-Radius","Sweep radius")
-add("sweep_btn","Karte nach Eiern absuchen","Sweep map for eggs")
-add("sweep_stop","Sweep stoppen","Stop sweep")
-add("sweep_prog","Sweep: %d/%d  •  %d Eier bekannt","Sweep: %d/%d  •  %d eggs known")
-add("sweep_done","Sweep beendet – %d Eier bekannt","Sweep finished – %d eggs known")
-add("sweep_na","Dein Executor/Spiel unterstützt RequestStreamAroundAsync nicht.","Your executor/game doesn't support RequestStreamAroundAsync.")
-add("sweep_off","Streaming ist in diesem Spiel aus – alle Eier werden schon erkannt.","Streaming is off in this game – all eggs are already detected.")
-add("sweep_info","Lädt die Map Stück für Stück nach, damit weit entfernte Eier erkannt und gemerkt werden. Kann kurz ruckeln.","Loads the map piece by piece so far-away eggs get detected and remembered. May stutter briefly.")
--- neu in v3.9: Configs, sicheres Teleportieren, Rubberband-Schutz
+add("s_tpsec","Teleport & Scan","Teleport & scan")
+add("s_tph","Teleport-Höhe","Teleport height")
+add("s_scani","Auto-Scan Intervall","Auto-scan interval")
+add("tp_safe","Sicheres Teleportieren","Safe teleport")
+add("tp_safe_sub","In Schritten statt Sprung – weniger Zurücksetzen","In steps instead of one jump – fewer rollbacks")
+add("tp_step","Schrittweite","Step size") add("tp_delay","Schritt-Pause","Step delay") add("tp_hold","Position halten","Hold position")
+add("s_notif","Benachrichtigungen","Notifications") add("s_ttime","Anzeigedauer","Display time")
 add("cfg_head","Configs","Configs")
 add("cfg_name","Config-Name...","Config name...")
 add("cfg_save","Speichern","Save") add("cfg_load","Laden","Load") add("cfg_del","Löschen","Delete")
@@ -403,13 +424,13 @@ add("cfg_nofile","Laden geht nur, wenn dein Executor Dateien speichern kann","Lo
 add("cfg_exported","Config in Zwischenablage kopiert","Config copied to clipboard")
 add("cfg_import_ok","Config importiert","Config imported")
 add("cfg_import_bad","Ungültiger Config-Text","Invalid config text")
-add("cfg_info","Speichert Design, ESP, Notifier, Teleport usw. Webhook-URL, Home und Ping werden bewusst nicht mitgespeichert. Eintrag antippen = Name übernehmen. Nach dem Laden schließt sich der Hub, dann Skript neu ausführen.","Saves design, ESP, notifier, teleport etc. Webhook URL, home and ping are intentionally not included. Tap an entry to fill the name. After loading the hub closes, then run the script again.")
-add("tp_safe","Sicheres Teleportieren","Safe teleport")
-add("tp_safe_sub","In Schritten statt Sprung – weniger Zurücksetzen","In steps instead of one jump – fewer rollbacks")
-add("tp_step","Schrittweite","Step size") add("tp_delay","Schritt-Pause","Step delay") add("tp_hold","Position halten","Hold position")
-add("rb_guard","Rubberband-Schutz","Rubberband guard")
-add("rb_guard_sub","Setzt dich zurück, wenn der Server dich zieht; senkt bei Dauerproblemen das Tempo","Snaps you back when the server pulls you; lowers speed if it keeps happening")
-add("rb_reduced","Server zieht dich zurück – Tempo reduziert","Server keeps pulling you back – speed reduced")
+add("cfg_info","Speichert Design, ESP, Notifier, Teleport, Visuals usw. Webhook-URL, Home und Ping werden bewusst nicht mitgespeichert. Eintrag antippen = Name übernehmen. Nach dem Laden schließt sich der Hub, dann Skript neu ausführen.","Saves design, ESP, notifier, teleport, visuals etc. Webhook URL, home and ping are intentionally not included. Tap an entry to fill the name. After loading the hub closes, then run the script again.")
+add("s_data","Daten","Data")
+add("s_save_info","Einstellungen werden automatisch gespeichert.","Settings are saved automatically.")
+add("s_save_na","Dein Executor kann keine Dateien speichern – Einstellungen gelten nur für diese Sitzung.","Your executor can't save files – settings only last for this session.")
+add("s_reset","Einstellungen zurücksetzen","Reset settings")
+add("s_reset_msg","Zurückgesetzt – bitte Skript neu ausführen","Reset – please run the script again")
+add("s_unload","Hub entladen","Unload hub")
 
 local langFns,textObjs={}, {}
 local function tr(k) local t=D[S.lang] return (t and t[k]) or D.de[k] or k end
@@ -2304,18 +2325,38 @@ task.spawn(function()
  end
 end)
 
---// ---------------- VISUALS ----------------
-local V={fb=false,fbBright=2,fog=false,time=false,clock=14,col=false,sat=0.5,fov=false,fovVal=90,zoom=false,zoomFov=25}
-do
+--// ---------------- VISUALS (v4.0) ----------------
+;(function()
  local vp=scroller(newPage("visuals"))
- local fbOrig,fogOrig,atmo,timeOrig,origFov,ccE
+ local V={fb=false,fbBright=S.vBright,fog=false,time=false,clock=S.vClock,col=false,sat=S.vSat,con=S.vContrast,
+  fov=false,fovVal=S.vFov,zoom=false,zoomFov=S.vZoom,zlim=false,zlimVal=S.vMaxZoom}
+ local tg={}
+ local fbOrig,fogOrig,atmo,timeOrig,origFov,ccE,zlOrig
  local zooming,zbase=false,nil
 
+ local function ccUpdate()
+  if ccE then pcall(function() ccE.Saturation=V.sat ccE.Contrast=V.con end) end
+ end
+
+ --// Presets
+ head(vp,"v_preset")
+ local pg=new("Frame",{Size=UDim2.new(1,0,0,38),BackgroundTransparency=1,LayoutOrder=ord(vp)},vp)
+ new("UIGridLayout",{CellSize=UDim2.new(0.5,-5,0,38),CellPadding=UDim2.fromOffset(10,10),SortOrder=Enum.SortOrder.LayoutOrder},pg)
+ makeButton(pg,"v_scout","acc",function()
+  for _,k in ipairs({"fb","fog","zlim","fov"}) do
+   if tg[k] and not tg[k].get() then tg[k].set(true) end
+  end
+ end,1)
+ makeButton(pg,"v_reset","bad",function()
+  for _,t in pairs(tg) do if t.get() then t.set(false) end end
+ end,2)
+
+ --// Beleuchtung
  head(vp,"v_light")
- makeToggle(vp,"fullbright","fb_sub",false,function(v)
-  if v then
+ tg.fb=makeToggle(vp,"fullbright","fb_sub",false,function(v)
+  if v and not V.fb then
    fbOrig={Brightness=Lighting.Brightness,Ambient=Lighting.Ambient,OutdoorAmbient=Lighting.OutdoorAmbient}
-  elseif fbOrig then
+  elseif not v and fbOrig then
    pcall(function()
     Lighting.Brightness=fbOrig.Brightness
     Lighting.Ambient=fbOrig.Ambient
@@ -2324,62 +2365,92 @@ do
   end
   V.fb=v
  end)
- makeSlider(vp,"fb_bright",1,5,0.5,V.fbBright,function(v) V.fbBright=v end,nil,function(v) return tostring(v) end)
- makeToggle(vp,"nofog","nofog_sub",false,function(v)
-  if v then
+ makeSlider(vp,"fb_bright",1,5,0.5,V.fbBright,function(v) V.fbBright=v S.vBright=v save() end,nil,function(v) return tostring(v) end)
+ tg.fog=makeToggle(vp,"nofog","nofog_sub",false,function(v)
+  if v and not V.fog then
    fogOrig={FogEnd=Lighting.FogEnd,FogStart=Lighting.FogStart}
    atmo={}
    for _,a in ipairs(Lighting:GetChildren()) do
     if a:IsA("Atmosphere") then atmo[#atmo+1]={obj=a,density=a.Density,haze=a.Haze} end
    end
-  else
+  elseif not v then
    if fogOrig then pcall(function() Lighting.FogEnd=fogOrig.FogEnd Lighting.FogStart=fogOrig.FogStart end) end
    if atmo then for _,a in ipairs(atmo) do pcall(function() a.obj.Density=a.density a.obj.Haze=a.haze end) end end
   end
   V.fog=v
  end)
- makeToggle(vp,"timefix","timefix_sub",false,function(v)
-  if v then timeOrig=Lighting.ClockTime
-  elseif timeOrig then pcall(function() Lighting.ClockTime=timeOrig end) end
+ tg.time=makeToggle(vp,"timefix","timefix_sub",false,function(v)
+  if v and not V.time then timeOrig=Lighting.ClockTime
+  elseif not v and timeOrig then pcall(function() Lighting.ClockTime=timeOrig end) end
   V.time=v
  end)
- makeSlider(vp,"clock",0,24,0.5,V.clock,function(v) V.clock=v end,nil,function(v)
+ makeSlider(vp,"clock",0,24,0.5,V.clock,function(v) V.clock=v S.vClock=v save() end,nil,function(v)
   local h=math.floor(v)
   local m=(v-h)>=0.5 and "30" or "00"
   return string.format("%02d:%s",h%24,m)
  end)
 
+ --// Farben
  head(vp,"v_color")
- local colSlider
- makeToggle(vp,"colboost","colboost_sub",false,function(v)
-  V.col=v
-  if v then
+ tg.col=makeToggle(vp,"colboost","colboost_sub",false,function(v)
+  if v and not V.col then
    pcall(function()
     ccE=Instance.new("ColorCorrectionEffect")
     ccE.Name="AntonioCC"
     ccE.Saturation=V.sat
-    ccE.Contrast=0.1
+    ccE.Contrast=V.con
     ccE.Parent=Lighting
    end)
-  else
+  elseif not v then
    if ccE then pcall(function() ccE:Destroy() end) ccE=nil end
   end
+  V.col=v
  end)
- colSlider=makeSlider(vp,"sat",-1,2,0.1,V.sat,function(v)
-  V.sat=v
-  if ccE then pcall(function() ccE.Saturation=v end) end
- end)
+ makeSlider(vp,"sat",-1,2,0.1,V.sat,function(v) V.sat=v S.vSat=v save() ccUpdate() end)
+ makeSlider(vp,"contrast",-0.5,1,0.1,V.con,function(v) V.con=v S.vContrast=v save() ccUpdate() end)
 
+ --// Kamera
  head(vp,"v_cam")
- makeToggle(vp,"fov_on","fov_sub",false,function(v)
+ tg.fov=makeToggle(vp,"fov_on","fov_sub",false,function(v)
   local cam=workspace.CurrentCamera
-  if v then origFov=cam and cam.FieldOfView or 70
-  elseif cam and origFov then cam.FieldOfView=origFov end
+  if v and not V.fov then origFov=cam and cam.FieldOfView or 70
+  elseif not v and cam and origFov then cam.FieldOfView=origFov end
   V.fov=v
  end)
- makeSlider(vp,"fov_val",40,120,5,V.fovVal,function(v) V.fovVal=v end)
- makeToggle(vp,"zoom","zoom_sub",false,function(v) V.zoom=v end)
- makeSlider(vp,"zoom_fov",10,60,5,V.zoomFov,function(v) V.zoomFov=v end)
+ makeSlider(vp,"fov_val",40,120,5,V.fovVal,function(v) V.fovVal=v S.vFov=v save() end)
+ tg.zoom=makeToggle(vp,"zoom","zoom_sub",false,function(v) V.zoom=v end)
+ makeSlider(vp,"zoom_fov",10,60,5,V.zoomFov,function(v) V.zoomFov=v S.vZoom=v save() end)
+ tg.zlim=makeToggle(vp,"zlim","zlim_sub",false,function(v)
+  if v and not V.zlim then
+   zlOrig=P.CameraMaxZoomDistance
+  elseif not v and zlOrig then
+   pcall(function() P.CameraMaxZoomDistance=zlOrig end)
+  end
+  V.zlim=v
+ end)
+ makeSlider(vp,"zlim_val",50,2000,50,V.zlimVal,function(v) V.zlimVal=v S.vMaxZoom=v save() end,nil,function(v) return v.." studs" end)
+
+ --// Overlay (FPS / Ping / Eier) - bleibt sichtbar, auch wenn das Menü versteckt ist
+ head(vp,"v_hud")
+ local hud=raw("TextLabel",{Name="AntonioHUD",BackgroundColor3=Color3.new(0,0,0),BackgroundTransparency=0.35,BorderSizePixel=0,
+  Position=UDim2.fromOffset(10,10),Size=UDim2.fromOffset(0,24),AutomaticSize=Enum.AutomaticSize.X,TextColor3=Color3.new(1,1,1),
+  Font=Enum.Font.GothamBold,TextSize=12,Text="",Visible=S.vHud,ZIndex=5},gui)
+ round(hud,6)
+ new("UIPadding",{PaddingLeft=UDim.new(0,10),PaddingRight=UDim.new(0,10)},hud,true)
+ makeToggle(vp,"hud","hud_sub",S.vHud,function(v) S.vHud=v save() hud.Visible=v end)
+
+ task.spawn(function()
+  while alive do
+   if hud.Visible then
+    local ping="-"
+    pcall(function() ping=math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue()).." ms" end)
+    local total=0
+    for _,n in pairs(allCounts) do total=total+n end
+    hud.Text=trf("hud_text",tostring(env.__ANTONIO_FPS or 0),ping,total,markCount())
+   end
+   task.wait(0.5)
+  end
+ end)
 
  conn(RS.Heartbeat:Connect(function()
   if V.fb then
@@ -2392,6 +2463,7 @@ do
    Lighting.FogEnd=1e9
    if atmo then for _,a in ipairs(atmo) do pcall(function() a.obj.Density=0 a.obj.Haze=0 end) end end
   end
+  if V.zlim then pcall(function() P.CameraMaxZoomDistance=V.zlimVal end) end
  end))
  conn(RS.RenderStepped:Connect(function()
   local cam=workspace.CurrentCamera
@@ -2410,7 +2482,7 @@ do
  end))
 
  restorers[#restorers+1]=function()
-  V.fb=false V.fog=false V.time=false V.fov=false V.zoom=false V.col=false
+  V.fb=false V.fog=false V.time=false V.fov=false V.zoom=false V.col=false V.zlim=false
   if fbOrig then pcall(function()
    Lighting.Brightness=fbOrig.Brightness Lighting.Ambient=fbOrig.Ambient Lighting.OutdoorAmbient=fbOrig.OutdoorAmbient
   end) end
@@ -2418,13 +2490,15 @@ do
   if fogOrig then pcall(function() Lighting.FogEnd=fogOrig.FogEnd Lighting.FogStart=fogOrig.FogStart end) end
   if atmo then for _,a in ipairs(atmo) do pcall(function() a.obj.Density=a.density a.obj.Haze=a.haze end) end end
   if ccE then pcall(function() ccE:Destroy() end) end
+  if zlOrig then pcall(function() P.CameraMaxZoomDistance=zlOrig end) end
+  pcall(function() hud:Destroy() end)
   local cam=workspace.CurrentCamera
   if cam then
    if zooming and zbase then pcall(function() cam.FieldOfView=zbase end)
    elseif origFov then pcall(function() cam.FieldOfView=origFov end) end
   end
  end
-end
+end)()
 
 --// ---------------- NOTIFIER (v3.6) ----------------
 ;(function()
@@ -2645,23 +2719,6 @@ end
 end)()
 
 --// ---------------- DISCORD WEBHOOK (v3.8) ----------------
-add("wh_list_head","Live-Embed","Live embed")
-add("wh_auto","Live-Embed senden","Send live embed")
-add("wh_auto_sub","Ein Embed in Discord wird laufend aktualisiert (auch beim AFK)","One embed in Discord is updated continuously (even while AFK)")
-add("wh_int","Intervall","Interval")
-add("wh_pos_sub","Koordinaten der Eier (max. 4 pro Sorte)","Egg coordinates (max. 4 per type)")
-add("wh_now","Embed jetzt aktualisieren","Update embed now")
-add("wh_new","Neues Embed erzwingen","Force new embed")
-add("wh_new_ok","Neues Embed wird erstellt","Creating a new embed")
-add("wh_ping_head","Ping bei neuem Ei","Ping on new egg")
-add("wh_ping_ph","User-ID, &Rollen-ID oder everyone (leer = aus)","User ID, &role ID or everyone (empty = off)")
-add("wh_ping_saved","Ping gespeichert","Ping saved")
-add("wh_ping_bad","Ungültig: User-ID, &Rollen-ID oder everyone","Invalid: user ID, &role ID or everyone")
-add("wh_rate","Discord-Limit erreicht, später erneut","Discord rate limit, retrying later")
-add("wh_status_ok","Zuletzt gesendet: %s  •  %d Updates","Last sent: %s  •  %d updates")
-add("wh_status_bad","Senden fehlgeschlagen um %s  •  %d Updates","Sending failed at %s  •  %d updates")
-add("wh_info","Das Embed zeigt Demon, Galaxy und Angel mit Anzahl, Größe, Entfernung, Uhrzeit, Datum, Server-Infos und Join-Link. Es wird alle paar Sekunden im selben Discord-Beitrag aktualisiert; in einem neuen Server entsteht automatisch ein neues Embed. URL und Embed-ID werden gespeichert. Läuft auch bei verstecktem Menü. Teile die URL mit niemandem.","The embed shows Demon, Galaxy and Angel with count, size, distance, time, date, server info and join link. It is updated every few seconds in the same Discord post; a new server automatically creates a new embed. URL and embed ID are saved. Keeps running with the menu hidden. Never share the URL.")
-
 ;(function()
  local wp=scroller(newPage("webhook"))
  local MPS=game:GetService("MarketplaceService")
@@ -2827,7 +2884,7 @@ add("wh_info","Das Embed zeigt Demon, Galaxy und Angel mit Anzahl, Größe, Entf
    description=cut(desc,3500),
    color=bestI and colorInt(TYPES[bestI].color) or 5197916,
    fields=fields,
-   footer={text="Antonio Hub v3.9  •  discord.gg/saveegg"},
+   footer={text="Antonio Hub v4.0  •  discord.gg/saveegg"},
    timestamp=os.date("!%Y-%m-%dT%H:%M:%SZ",now),
   }
  end
@@ -3190,16 +3247,96 @@ do
  end
 end
 
---// ---------------- PERFORMANCE ----------------
-do
+--// ---------------- PERFORMANCE (v4.0) ----------------
+;(function()
  local fp=scroller(newPage("perf"))
- local PF={part=false,fx=false,mat=false,cap=false,capVal=60}
- local shadowOrig,qualOrig
+ local PF={part=false,fx=false,mat=false,tex=false,hide=false,cap=false,capVal=S.pCap}
+ local shadowOrig,qualOrig,volOrig,waterOrig
  local pOff={}
  local fxOrig=setmetatable({},{__mode="k"})
  local matOrig=setmetatable({},{__mode="k"})
+ local texOrig=setmetatable({},{__mode="k"})
+ local hidOrig=setmetatable({},{__mode="k"})
  local tg={}
+ local capSlider
  local hasCap=(type(setfpscap)=="function")
+ local FXCLS={ParticleEmitter=true,Trail=true,Beam=true,Fire=true,Smoke=true,Sparkles=true}
+
+ local function partDo(o)
+  if FXCLS[o.ClassName] and o.Enabled then pOff[o]=true o.Enabled=false end
+ end
+ local function matDo(o)
+  if o:IsA("BasePart") and not o:IsA("Terrain") and o.Material~=Enum.Material.Neon and o.Material~=Enum.Material.SmoothPlastic then
+   matOrig[o]=o.Material
+   o.Material=Enum.Material.SmoothPlastic
+  end
+ end
+ local function texDo(o)
+  if (o:IsA("Decal") or o:IsA("Texture")) and o.Transparency<1 then
+   local ch=P.Character
+   if ch and o:IsDescendantOf(ch) then return end
+   texOrig[o]=o.Transparency
+   o.Transparency=1
+  end
+ end
+ local function fxDo(o)
+  if o:IsA("PostEffect") and o.Name~="AntonioCC" and o.Enabled then
+   fxOrig[o]=true
+   o.Enabled=false
+  end
+ end
+ local function waterDo(v)
+  local t=workspace:FindFirstChildOfClass("Terrain")
+  if not t then return end
+  pcall(function()
+   if v then
+    if not waterOrig then waterOrig={size=t.WaterWaveSize,speed=t.WaterWaveSpeed,refl=t.WaterReflectance} end
+    t.WaterWaveSize=0 t.WaterWaveSpeed=0 t.WaterReflectance=0
+   elseif waterOrig then
+    t.WaterWaveSize=waterOrig.size t.WaterWaveSpeed=waterOrig.speed t.WaterReflectance=waterOrig.refl
+    waterOrig=nil
+   end
+  end)
+ end
+ -- geht alle Objekte der Map in kleinen Häppchen durch (kein Ruckeln)
+ local function sweepMap(flag,fn)
+  task.spawn(function()
+   local d=workspace:GetDescendants()
+   for i=1,#d do
+    if not alive or not PF[flag] then return end
+    pcall(fn,d[i])
+    if i%400==0 then task.wait() end
+   end
+  end)
+ end
+
+ --// Presets
+ head(fp,"f_preset")
+ local pg=new("Frame",{Size=UDim2.new(1,0,0,38),BackgroundTransparency=1,LayoutOrder=ord(fp)},fp)
+ new("UIGridLayout",{CellSize=UDim2.new(0.5,-5,0,38),CellPadding=UDim2.fromOffset(10,10),SortOrder=Enum.SortOrder.LayoutOrder},pg)
+ local function applyList(list)
+  for _,k in ipairs(list) do
+   local t=tg[k]
+   if t and not t.get() then t.set(true) end
+  end
+ end
+ makeButton(pg,"boost_preset","acc",function()
+  applyList({"shadow","part","fx","tex","water","hide","qual"})
+ end,1)
+ makeButton(pg,"afk_preset",Color3.fromRGB(90,60,200),function()
+  applyList({"shadow","part","fx","tex","water","hide","qual","mute"})
+  if tg.cap and capSlider then
+   PF.capVal=20
+   capSlider.set(20,false)
+   if tg.cap.get() then pcall(function() setfpscap(20) end) else tg.cap.set(true) end
+  end
+  applyList({"r3d"})
+ end,2)
+ makeButton(fp,"reset_all","bad",function()
+  for _,t in pairs(tg) do if t.get() then t.set(false) end end
+  PF.capVal=S.pCap
+  if capSlider then capSlider.set(S.pCap,false) end
+ end)
 
  head(fp,"f_live")
  local live=makeLabelBox(fp,nil,nil,32)
@@ -3207,49 +3344,21 @@ do
  head(fp,"f_gfx")
  tg.shadow=makeToggle(fp,"shadows","shadows_sub",false,function(v)
   if v then
-   shadowOrig=Lighting.GlobalShadows
+   if shadowOrig==nil then shadowOrig=Lighting.GlobalShadows end
    Lighting.GlobalShadows=false
   elseif shadowOrig~=nil then
    Lighting.GlobalShadows=shadowOrig
+   shadowOrig=nil
   end
  end)
  tg.part=makeToggle(fp,"part","part_sub",false,function(v)
   PF.part=v
   if v then
-   task.spawn(function()
-    local d=workspace:GetDescendants()
-    for i=1,#d do
-     if not alive or not PF.part then return end
-     local o=d[i]
-     if o:IsA("ParticleEmitter") and o.Enabled then pOff[o]=true o.Enabled=false end
-     if i%500==0 then task.wait() end
-    end
-   end)
+   sweepMap("part",partDo)
   else
    for o in pairs(pOff) do pcall(function() o.Enabled=true end) pOff[o]=nil end
   end
  end)
- conn(workspace.DescendantAdded:Connect(function(o)
-  if PF.part and o:IsA("ParticleEmitter") then
-   task.defer(function()
-    if PF.part and o.Parent and o.Enabled then pOff[o]=true o.Enabled=false end
-   end)
-  end
-  if PF.mat and o:IsA("BasePart") and not o:IsA("Terrain") then
-   task.defer(function()
-    if PF.mat and o.Parent and o.Material~=Enum.Material.Neon and o.Material~=Enum.Material.SmoothPlastic then
-     matOrig[o]=o.Material
-     o.Material=Enum.Material.SmoothPlastic
-    end
-   end)
-  end
- end))
- local function fxDo(o)
-  if o:IsA("PostEffect") and o.Name~="AntonioCC" and o.Enabled then
-   fxOrig[o]=true
-   o.Enabled=false
-  end
- end
  tg.fx=makeToggle(fp,"fx","fx_sub",false,function(v)
   PF.fx=v
   if v then
@@ -3260,38 +3369,75 @@ do
    for o in pairs(fxOrig) do pcall(function() o.Enabled=true end) fxOrig[o]=nil end
   end
  end)
- conn(Lighting.ChildAdded:Connect(function(o)
-  if PF.fx then task.defer(function() pcall(fxDo,o) end) end
- end))
  tg.mat=makeToggle(fp,"mat","mat_sub",false,function(v)
   PF.mat=v
   if v then
-   task.spawn(function()
-    local d=workspace:GetDescendants()
-    for i=1,#d do
-     if not alive or not PF.mat then return end
-     local o=d[i]
-     if o:IsA("BasePart") and not o:IsA("Terrain") and o.Material~=Enum.Material.Neon and o.Material~=Enum.Material.SmoothPlastic then
-      matOrig[o]=o.Material
-      o.Material=Enum.Material.SmoothPlastic
-     end
-     if i%400==0 then task.wait() end
-    end
-   end)
+   sweepMap("mat",matDo)
   else
    for o,m in pairs(matOrig) do pcall(function() o.Material=m end) matOrig[o]=nil end
+  end
+ end)
+ tg.tex=makeToggle(fp,"tex","tex_sub",false,function(v)
+  PF.tex=v
+  if v then
+   sweepMap("tex",texDo)
+  else
+   for o,t in pairs(texOrig) do pcall(function() o.Transparency=t end) texOrig[o]=nil end
+  end
+ end)
+ tg.water=makeToggle(fp,"water","water_sub",false,function(v) waterDo(v) end)
+ tg.hide=makeToggle(fp,"hideplr","hideplr_sub",false,function(v)
+  PF.hide=v
+  if not v then
+   for o in pairs(hidOrig) do pcall(function() o.LocalTransparencyModifier=0 end) hidOrig[o]=nil end
   end
  end)
  tg.qual=makeToggle(fp,"qual","qual_sub",false,function(v)
   pcall(function()
    local r=settings().Rendering
    if v then
-    qualOrig=r.QualityLevel
+    if not qualOrig then qualOrig=r.QualityLevel end
     r.QualityLevel=Enum.QualityLevel.Level01
    elseif qualOrig then
     r.QualityLevel=qualOrig
+    qualOrig=nil
    end
   end)
+ end)
+
+ -- neu hinzugekommene Objekte sofort mit behandeln
+ conn(workspace.DescendantAdded:Connect(function(o)
+  if PF.part or PF.mat or PF.tex then
+   task.defer(function()
+    if not o.Parent then return end
+    if PF.part then pcall(partDo,o) end
+    if PF.mat then pcall(matDo,o) end
+    if PF.tex then pcall(texDo,o) end
+   end)
+  end
+ end))
+ conn(Lighting.ChildAdded:Connect(function(o)
+  if PF.fx then task.defer(function() pcall(fxDo,o) end) end
+ end))
+
+ -- andere Spieler ausblenden (läuft jede Sekunde, damit neue Spieler auch ausgeblendet werden)
+ task.spawn(function()
+  while alive do
+   if PF.hide then
+    for _,pl in ipairs(Players:GetPlayers()) do
+     local ch=(pl~=P) and pl.Character
+     if ch then
+      for _,o in ipairs(ch:GetDescendants()) do
+       if o:IsA("BasePart") and o.LocalTransparencyModifier<1 then
+        hidOrig[o]=true
+        o.LocalTransparencyModifier=1
+       end
+      end
+     end
+    end
+   end
+   task.wait(1)
+  end
  end)
 
  head(fp,"f_limit")
@@ -3300,8 +3446,10 @@ do
    PF.cap=v
    pcall(function() setfpscap(v and PF.capVal or 0) end)
   end)
-  makeSlider(fp,"cap_val",15,240,5,PF.capVal,function(v)
+  capSlider=makeSlider(fp,"cap_val",15,240,5,PF.capVal,function(v)
    PF.capVal=v
+   S.pCap=v
+   save()
    if PF.cap then pcall(function() setfpscap(v) end) end
   end)
  else
@@ -3309,39 +3457,50 @@ do
  end
 
  head(fp,"f_afk")
+ tg.mute=makeToggle(fp,"mute","mute_sub",false,function(v)
+  pcall(function()
+   local gs=UserSettings():GetService("UserGameSettings")
+   if v then
+    if volOrig==nil then volOrig=gs.MasterVolume end
+    gs.MasterVolume=0
+   elseif volOrig~=nil then
+    gs.MasterVolume=volOrig
+    volOrig=nil
+   end
+  end)
+ end)
  tg.r3d=makeToggle(fp,"render3d","render3d_sub",false,function(v)
   pcall(function() RS:Set3dRenderingEnabled(not v) end)
  end)
- makeButton(fp,"afk_preset","acc",function()
-  tg.shadow.set(true) tg.part.set(true) tg.fx.set(true) tg.r3d.set(true)
- end)
- makeButton(fp,"reset_all","bad",function()
-  for _,t in pairs(tg) do if t.get() then t.set(false) end end
- end)
- makeLabelBox(fp,"f_tip",nil,44)
+ makeLabelBox(fp,"f_tip",nil,76)
 
  task.spawn(function()
   while alive do
    if cur=="perf" then
-    local ping="-"
+    local ping,ram="-","-"
     pcall(function() ping=math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue()).." ms" end)
-    live.Text=trf("f_live_t",tostring(env.__ANTONIO_FPS or 0),ping)
+    pcall(function() ram=tostring(math.floor(Stats:GetTotalMemoryUsageMb())) end)
+    live.Text=trf("f_live_t",tostring(env.__ANTONIO_FPS or 0),ping,ram)
    end
    task.wait(0.5)
   end
  end)
 
  restorers[#restorers+1]=function()
-  PF.part=false PF.fx=false PF.mat=false
+  PF.part=false PF.fx=false PF.mat=false PF.tex=false PF.hide=false
   pcall(function() RS:Set3dRenderingEnabled(true) end)
   if shadowOrig~=nil then pcall(function() Lighting.GlobalShadows=shadowOrig end) end
   if qualOrig then pcall(function() settings().Rendering.QualityLevel=qualOrig end) end
   if hasCap and PF.cap then pcall(function() setfpscap(0) end) end
+  if volOrig~=nil then pcall(function() UserSettings():GetService("UserGameSettings").MasterVolume=volOrig end) end
+  waterDo(false)
   for o in pairs(pOff) do pcall(function() o.Enabled=true end) pOff[o]=nil end
   for o in pairs(fxOrig) do pcall(function() o.Enabled=true end) fxOrig[o]=nil end
   for o,m in pairs(matOrig) do pcall(function() o.Material=m end) matOrig[o]=nil end
+  for o,t in pairs(texOrig) do pcall(function() o.Transparency=t end) texOrig[o]=nil end
+  for o in pairs(hidOrig) do pcall(function() o.LocalTransparencyModifier=0 end) hidOrig[o]=nil end
  end
-end
+end)()
 
 --// ---------------- TOOLS ----------------
 do
@@ -3457,7 +3616,7 @@ do
    marker.bb=raw("BillboardGui",{Adornee=marker.part,AlwaysOnTop=true,Size=UDim2.fromOffset(200,40),StudsOffset=Vector3.new(0,3,0),
     MaxDistance=math.huge,LightInfluence=0,ResetOnSpawn=false},gui)
    marker.lb=raw("TextLabel",{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,TextColor3=Color3.fromRGB(255,215,70),
-    TextStrokeTransparency=0,Font=Enum.Font.GothamBold,TextSize=14,Text="Home"},marker.bb)
+    TextStrokeTransparency=0,Font=Enum.Font.GothamBold,TextSize=14,Text=tr("h_label")},marker.bb)
    if S.homeHide then
     marker.ring=raw("Part",{Name="AntonioHomeRing",Anchored=true,CanCollide=false,CanQuery=false,CanTouch=false,CastShadow=false,
      Shape=Enum.PartType.Cylinder,Material=Enum.Material.Neon,Color=Color3.fromRGB(255,215,70),Transparency=0.88,
@@ -3504,7 +3663,7 @@ do
     local hrp=c and c:FindFirstChild("HumanoidRootPart")
     if hrp then
      local d=(Vector3.new(h.x,h.y,h.z)-hrp.Position).Magnitude
-     marker.lb.Text="Home  •  "..math.floor(d).." m"
+     marker.lb.Text=tr("h_label").."  •  "..math.floor(d).." m"
     end
    end
    task.wait(0.3)
@@ -3909,4 +4068,4 @@ closeHub=function()
 end
 closeB.MouseButton1Click:Connect(function() closeHub() end)
 
-print("Antonio Hub v3.9 geladen")
+print("Antonio Hub v4.0 geladen")
