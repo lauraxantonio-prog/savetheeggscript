@@ -1,4 +1,7 @@
---// ANTONIO HUB v4.7  (Start | ESP | Anzahl | Teleport | Visuals | Notifier | Webhook | Spieler | Spieler ESP | Performance | Tools | Autofarm | Home | Einstellungen)
+--// ANTONIO HUB v4.8 FINAL  (Start | ESP | Anzahl | Teleport | Visuals | Notifier | Webhook | Spieler | Spieler ESP | Performance | Tools | Autofarm | Home | Einstellungen)
+--// v4.8 FINAL: SPIELER ESP KOMPLETT AUSGEBAUT: Box 3D/2D/Ecken + seitlicher Lebensbalken, Kopf-Kreis, Namens-Modus (Anzeige/User/Beides), Team, Leaderstats, Tempo, Tag-Position, Text skaliert mit Entfernung,
+--//       Niedrig-Leben-Warnung, Nur N naechste, Auto-Fokus (naechster / wenig Leben), Naeheralarm, Join/Leave-Meldungen, Radar (dreht mit / Norden), Fadenkreuz, Fokus-Karte, ESP-Hotkey (K),
+--//       Hitbox nur fuer Fokus-Spieler, Spielerliste mit Sortierung + Zuschauen vor/zurueck. Alle Drawing-Zugriffe abgesichert.
 --// v4.7: SPIELER-BEREICH NEU: Presets (Legit/Schnell), Speed-Modus Normal/CFrame, Sprint (Shift), Bunny-Hop, sanftes Fliegen mit Touch-Support, Schwerkraft, Anti-Void, Klick-Teleport (Strg+Klick), Wegpunkte pro Spiel, Hotkeys (F/N/G), Live-Anzeige. Werte bleiben gespeichert.
 --// v4.6: SPIELER ESP KOMPLETT AUSGEBAUT: Hitbox bis 250 Studs (Standard 25) + Presets (Klein/Mittel/Gross/Riesig), Hitbox-Box waechst mit der Hitbox mit, optional Oberkoerper, Neon-Einfaerbung.
 --//       Neu: Skelett, Chams (Highlight), Blickrichtung, Offscreen-Pfeile, Sichtbarkeits-Farbmodus (Raycast), Freunde in Cyan, Mini-Radar (verschiebbar),
@@ -83,6 +86,9 @@ local S={
  peRadar=false,peRadarR=300,peRadarS=150,
  hbEsp=true,hbBody=false,hbPaint=true,
  -- neu in v4.7 (Spieler-Bereich)
+ -- neu in v4.8 (Spieler ESP final)
+ peBoxStyle=1,peHead=false,peNameMode=1,peTeamTag=false,peStats=false,peVel=false,peTagPos=1,peScale=false,peLow=false,peLowPct=30,peNearN=0,peAutoFocus=1,
+ peAlert=false,peAlertR=100,peJoin=false,peCross=false,peCrossSize=10,peCard=false,peRadarRot=true,peSort=1,peHotkey=false,hbFocus=false,
  plSpeedVal=32,plJumpVal=100,plFlySpeed=60,plSpeedMode=1,plSprint=false,plSprintMul=1.6,plKeys=false,plCTP=false,plGravVal=100,plAntiVoid=false,wps={},
 }
 do
@@ -112,6 +118,15 @@ S.hbSize=math.clamp(S.hbSize,2,250)
 S.peRadarR=math.clamp(S.peRadarR,50,2000)
 S.peRadarS=math.clamp(S.peRadarS,100,260)
 S.peSkelW=math.clamp(S.peSkelW,1,4)
+S.peBoxStyle=math.clamp(math.floor(S.peBoxStyle),1,3)
+S.peNameMode=math.clamp(math.floor(S.peNameMode),1,3)
+S.peTagPos=math.clamp(math.floor(S.peTagPos),1,2)
+S.peAutoFocus=math.clamp(math.floor(S.peAutoFocus),1,3)
+S.peSort=math.clamp(math.floor(S.peSort),1,3)
+S.peLowPct=math.clamp(S.peLowPct,5,90)
+S.peNearN=math.clamp(math.floor(S.peNearN),0,30)
+S.peAlertR=math.clamp(S.peAlertR,10,1000)
+S.peCrossSize=math.clamp(S.peCrossSize,4,40)
 S.plSpeedMode=math.clamp(math.floor(S.plSpeedMode),1,2)
 S.plSpeedVal=math.clamp(S.plSpeedVal,16,300)
 S.plJumpVal=math.clamp(S.plJumpVal,50,400)
@@ -378,7 +393,7 @@ add("pe_on","Spieler-ESP","Player ESP") add("pe_on_sub","Hauptschalter – zeigt
 add("pe_preset","Presets","Presets")
 add("pe_all","Alles an","Everything on") add("pe_none","Alles aus","Everything off") add("pe_min","Minimal","Minimal")
 add("pe_show","Anzeige","Display")
-add("pe_box","Box","Box") add("pe_box_sub","3D-Box um jeden Spieler","3D box around every player")
+add("pe_box","Box","Box") add("pe_box_sub","Box um jeden Spieler (Stil unten wählbar)","Box around every player (style selectable below)")
 add("pe_name","Nametags","Nametags") add("pe_name_sub","Name über dem Kopf","Name above the head")
 add("pe_tool","Item in der Hand","Held item") add("pe_tool_sub","Zeigt das ausgerüstete Tool","Shows the equipped tool")
 add("pe_dist","Entfernung","Distance") add("pe_dist_sub","Meter zum Spieler","Meters to the player")
@@ -425,7 +440,34 @@ add("pl_view_on","Du schaust %s zu","Spectating %s")
 add("pl_view_off","Zuschauen beendet","Stopped spectating")
 add("pl_focus_on","Fokus: %s","Focus: %s") add("pl_focus_off","Fokus entfernt","Focus cleared")
 add("pl_gone","Spieler hat keinen Charakter","Player has no character")
-add("pe_info","Alles läuft auch bei verstecktem Menü. Der Hauptschalter „Spieler-ESP“ muss an sein (Radar und Hitbox laufen unabhängig). Fokus-Spieler werden in Gold gezeigt und ignorieren Team-/Entfernungsfilter. Die Hitbox ist nur auf deinem Bildschirm größer; Rubberband und Serverprüfungen können sie je nach Spiel zurücksetzen. Chams zeigen bei aktiver Hitbox auch die vergrößerte Hitbox. Beim Entladen wird alles zurückgesetzt.","Everything keeps running with the menu hidden. The master switch “Player ESP” must be on (radar and hitbox run independently). Focus players are shown in gold and ignore team/distance filters. The hitbox is only bigger on your screen; rubberbanding and server checks may reset it depending on the game. Chams also show the expanded hitbox while it is active. Everything is restored on unload.")
+add("pe_info","Alles läuft auch bei verstecktem Menü. Der Hauptschalter „Spieler-ESP“ muss an sein (Radar, Fadenkreuz, Fokus-Karte, Alarme und Hitbox laufen unabhängig). Fokus-Spieler werden in Gold gezeigt und ignorieren Team-/Entfernungsfilter; Auto-Fokus wählt ihn automatisch. Die Hitbox ist nur auf deinem Bildschirm größer; Rubberband und Serverprüfungen können sie je nach Spiel zurücksetzen. Chams zeigen bei aktiver Hitbox auch die vergrößerte Hitbox. Leaderstats erscheinen nur, wenn das Spiel sie bereitstellt. Beim Entladen wird alles zurückgesetzt.","Everything keeps running with the menu hidden. The master switch “Player ESP” must be on (radar, crosshair, focus card, alerts and hitbox run independently). Focus players are shown in gold and ignore team/distance filters; auto focus picks one for you. The hitbox is only bigger on your screen; rubberbanding and server checks may reset it depending on the game. Chams also show the expanded hitbox while it is active. Leaderstats only show if the game provides them. Everything is restored on unload.")
+-- Spieler ESP final (v4.8)
+add("pe_boxstyle","Box-Stil","Box style") add("bs_3d","3D","3D") add("bs_2d","2D","2D") add("bs_corner","Ecken","Corners")
+add("pe_headc","Kopf-Kreis","Head circle") add("pe_headc_sub","Kreis um den Kopf (Drawing nötig)","Circle around the head (needs Drawing)")
+add("pe_namemode","Namensanzeige","Name display") add("nm_disp","Anzeigename","Display name") add("nm_user","Benutzername","Username") add("nm_both","Beides","Both")
+add("pe_teamtag","Team anzeigen","Show team") add("pe_teamtag_sub","Teamname im Tag","Team name in the tag")
+add("pe_stats","Leaderstats anzeigen","Show leaderstats") add("pe_stats_sub","Werte wie Level/Coins im Tag (wenn das Spiel sie bereitstellt)","Values like level/coins in the tag (if the game provides them)")
+add("pe_vel","Tempo anzeigen","Show speed") add("pe_vel_sub","Geschwindigkeit des Spielers in studs/s","Player speed in studs/s")
+add("pe_tagpos","Tag-Position","Tag position")
+add("pe_scale","Text skaliert mit Entfernung","Text scales with distance") add("pe_scale_sub","Weit entfernte Spieler bekommen kleinere Schrift","Far players get smaller text")
+add("pe_low","Niedrig-Leben-Warnung","Low health warning") add("pe_low_sub","Spieler unter der Schwelle blinken orange","Players below the threshold flash orange") add("pe_lowpct","Leben-Schwelle","Health threshold")
+add("pe_nearn","Nur nächste Spieler","Only nearest players") add("pe_alln","Alle","All")
+add("pe_auto","Auto-Fokus","Auto focus") add("af_off","Aus","Off") add("af_near","Nächster","Nearest") add("af_low","Wenig Leben","Low health")
+add("pe_alerts","Alarme","Alerts")
+add("pe_alert","Nähe-Alarm","Proximity alert") add("pe_alert_sub","Meldung, wenn ein Spieler in den Radius kommt","Alert when a player enters the radius") add("pe_alertr","Alarm-Radius","Alert radius")
+add("pe_alert_msg","%s ist nur %d m entfernt!","%s is only %d m away!")
+add("pe_join","Join/Leave-Meldungen","Join/leave alerts") add("pe_join_sub","Meldung, wenn Spieler kommen oder gehen","Alert when players join or leave")
+add("pe_joined","%s ist beigetreten","%s joined") add("pe_left","%s hat den Server verlassen","%s left the server")
+add("pe_ovl","Overlays","Overlays")
+add("rd_rot","Radar dreht mit","Radar rotates") add("rd_rot_sub","Aus = Norden immer oben","Off = north always up")
+add("pe_cross","Fadenkreuz","Crosshair") add("pe_cross_sub","Kleines Fadenkreuz in der Bildmitte","Small crosshair in the screen center") add("pe_crosss","Fadenkreuz-Größe","Crosshair size")
+add("pe_card","Fokus-Karte","Focus card") add("pe_card_sub","Info-Fenster zum Fokus-Spieler (verschiebbar)","Info window for the focus player (draggable)")
+add("card_none","Kein Fokus-Spieler. In der Spielerliste „Fokus“ drücken.","No focus player. Press “Focus” in the player list.")
+add("card_t","%s\n%d HP  •  %d m  •  %d s/s\n%s","%s\n%d HP  •  %d m  •  %d s/s\n%s")
+add("pe_hotkey","ESP-Hotkey (K)","ESP hotkey (K)") add("pe_hotkey_sub","Taste K schaltet den Spieler-ESP an/aus","Key K toggles the player ESP")
+add("hb_focus","Nur Fokus-Spieler","Focus player only") add("hb_focus_sub","Hitbox nur beim Fokus-Spieler vergrößern","Only expand the focus player's hitbox")
+add("pl_sort","Sortierung","Sorting") add("ps_dist","Distanz","Distance") add("ps_hp","Leben","Health") add("ps_name","Name","Name")
+add("pl_prev","Vorheriger","Previous") add("pl_next","Nächster","Next")
 -- Performance
 add("f_live","Live","Live")
 add("f_live_t","FPS %s  •  Ping %s  •  RAM %s MB","FPS %s  •  Ping %s  •  RAM %s MB")
@@ -3023,7 +3065,7 @@ end)()
     {name="📏 "..L("Größe","Size"),value=#ls>0 and cut(table.concat(ls,"\n"),1000) or "–",inline=false},
     {name="🔗 "..L("Spiel-Link","Game link"),value="**[▶ "..L("Server beitreten","Join server").."]("..joinLink()..")**\nJobId `"..game.JobId.."`",inline=false},
    },
-   footer={text="Antonio Hub v4.7  •  discord.gg/saveegg"},
+   footer={text="Antonio Hub v4.8  •  discord.gg/saveegg"},
    timestamp=os.date("!%Y-%m-%dT%H:%M:%SZ"),
   }
  end
@@ -3526,9 +3568,11 @@ end)()
  end
 end)()
 
---// ---------------- SPIELER ESP (v4.6) ----------------
--- Box (waechst mit der Hitbox), Nametags (Name / Item / Entfernung / Leben), Lebensbalken, Tracer, Skelett, Chams, Blickrichtung,
--- Offscreen-Pfeile, Mini-Radar, Sichtbarkeits-Farbmodus, Freunde, Fokus-Spieler, Hitbox-Vergroesserung (bis 250 Studs), Spielerliste
+--// ---------------- SPIELER ESP (v4.8 FINAL) ----------------
+-- Box 3D / 2D / Ecken (+ seitlicher Lebensbalken), Kopf-Kreis, Nametags (Name-Modus, Team, Tool, Leaderstats, Tempo, Entfernung, Leben),
+-- Tracer, Skelett, Chams, Blickrichtung, Offscreen-Pfeile, Niedrig-Leben-Warnung, Nur-N-naechste, Auto-Fokus, Naeheralarm, Join/Leave,
+-- Radar, Fadenkreuz, Fokus-Karte, Hitbox (bis 250 Studs, nur Fokus moeglich), Spielerliste (Sortierung, Zuschauen vor/zurueck)
+-- Alle Drawing-Zugriffe sind abgesichert: ein Executor ohne Support laesst nur das jeweilige Feature aus.
 ;(function()
  local pe=scroller(newPage("pesp"))
  local objs={}
@@ -3536,8 +3580,8 @@ end)()
  local specTarget=nil
  local hasDraw=(Drawing~=nil)
  local tg={}
- local X={vis={},friend={},focus=nil,rt=0,dots={}}
- local hbSlider,hbTog
+ local X={vis={},friend={},focus=nil,rt=0,dots={},alerted={},order={},c={}}
+ local hbSlider,hbTog,boxSeg
  local GREEN,REDC=Color3.fromRGB(70,255,110),Color3.fromRGB(255,60,60)
  local GOLD,CYAN=Color3.fromRGB(255,205,50),Color3.fromRGB(80,230,255)
  local BOXN=Vector3.new(4,5.6,1.8)
@@ -3546,6 +3590,7 @@ end)()
   {"UpperTorso","RightUpperArm"},{"RightUpperArm","RightLowerArm"},{"RightLowerArm","RightHand"},{"LowerTorso","LeftUpperLeg"},{"LeftUpperLeg","LeftLowerLeg"},
   {"LeftLowerLeg","LeftFoot"},{"LowerTorso","RightUpperLeg"},{"RightUpperLeg","RightLowerLeg"},{"RightLowerLeg","RightFoot"}}
  local SKEL6={{"Head","Torso"},{"Torso","Left Arm"},{"Torso","Right Arm"},{"Torso","Left Leg"},{"Torso","Right Leg"}}
+ local SUF={{1e12,"T"},{1e9,"B"},{1e6,"M"},{1e3,"K"}}
 
  local function isMate(pl) return P.Team~=nil and pl.Team==P.Team end
  local function isFriend(pl)
@@ -3576,8 +3621,32 @@ end)()
   if pl.Team then return pl.TeamColor.Color end
   return Color3.fromRGB(255,255,255)
  end
+ local function fmtN(v)
+  if type(v)~="number" then return tostring(v) end
+  local a=math.abs(v)
+  for _,s in ipairs(SUF) do
+   if a>=s[1] then return string.format("%.1f%s",v/s[1],s[2]) end
+  end
+  if v==math.floor(v) then return tostring(v) end
+  return string.format("%.1f",v)
+ end
+ local function statsText(pl)
+  local ls=pl:FindFirstChild("leaderstats")
+  if not ls then return nil end
+  local parts={}
+  for _,v in ipairs(ls:GetChildren()) do
+   if v:IsA("ValueBase") then
+    local ok,val=pcall(function() return v.Value end)
+    if ok and (type(val)=="number" or type(val)=="string") then
+     parts[#parts+1]=v.Name..": "..fmtN(val)
+     if #parts>=3 then break end
+    end
+   end
+  end
+  return #parts>0 and table.concat(parts,"  ") or nil
+ end
 
- -- sichere Drawing-Erzeugung: liefert nil, wenn der Executor kein brauchbares Objekt zurueckgibt
+ --// ---------- sichere Drawing-Helfer ----------
  local function newDraw(kind)
   if not hasDraw then return nil end
   local ok,d=pcall(function() return Drawing.new(kind) end)
@@ -3587,59 +3656,61 @@ end)()
   if not pcall(function() d.Visible=false end) then return nil end
   return d
  end
+ local function getD(o,key,kind)
+  local d=o[key]
+  if d==nil then d=newDraw(kind) or false o[key]=d end
+  return d or nil
+ end
+ local function getLines(o,key,n)
+  local t=o[key]
+  if not t then t={} o[key]=t end
+  for i=#t+1,n do
+   local l=newDraw("Line")
+   if not l then break end
+   t[i]=l
+  end
+  return t
+ end
+ local function hideD(d) if d then pcall(function() d.Visible=false end) end end
+ local function hideList(t) if t then for _,l in ipairs(t) do pcall(function() l.Visible=false end) end end end
+ local function rm(d) if d then pcall(function() d:Remove() end) end end
 
  local function destroyObj(o)
   pcall(function() o.bb:Destroy() end)
   pcall(function() o.box:Destroy() end)
   if o.hl then pcall(function() o.hl:Destroy() end) end
-  if o.line then pcall(function() o.line:Remove() end) end
-  if o.look then pcall(function() o.look:Remove() end) end
-  if o.arrow then for _,l in ipairs(o.arrow) do pcall(function() l:Remove() end) end end
-  for _,l in ipairs(o.skel) do pcall(function() l:Remove() end) end
+  rm(o.line) rm(o.look) rm(o.circ)
+  for _,k in ipairs({"skel","bx","hbl","arrow"}) do
+   if o[k] then for _,l in ipairs(o[k]) do rm(l) end end
+  end
  end
  local function makeObj()
-  local o={skel={}}
-  o.bb=raw("BillboardGui",{AlwaysOnTop=true,Size=UDim2.fromOffset(220,66),StudsOffset=Vector3.new(0,3.6,0),MaxDistance=math.huge,
+  local o={}
+  o.bb=raw("BillboardGui",{AlwaysOnTop=true,Size=UDim2.fromOffset(260,110),StudsOffset=Vector3.new(0,3.6,0),MaxDistance=math.huge,
    LightInfluence=0,ResetOnSpawn=false,Enabled=false},gui)
-  o.lb=raw("TextLabel",{Size=UDim2.new(1,0,0,52),BackgroundTransparency=1,TextStrokeTransparency=0.2,Font=espFontEnum(),
+  o.lb=raw("TextLabel",{Size=UDim2.new(1,0,0,96),Position=UDim2.fromOffset(0,-41),BackgroundTransparency=1,TextStrokeTransparency=0.2,Font=espFontEnum(),
    TextSize=S.peText,TextColor3=Color3.new(1,1,1),TextYAlignment=Enum.TextYAlignment.Bottom,Text=""},o.bb)
-  o.barBg=raw("Frame",{Size=UDim2.fromOffset(70,5),Position=UDim2.new(0.5,-35,0,56),BackgroundColor3=Color3.new(0,0,0),
+  o.barBg=raw("Frame",{Size=UDim2.fromOffset(70,5),Position=UDim2.new(0.5,-35,0,58),BackgroundColor3=Color3.new(0,0,0),
    BackgroundTransparency=0.3,BorderSizePixel=0,Visible=false},o.bb)
   o.bar=raw("Frame",{Size=UDim2.fromScale(1,1),BackgroundColor3=GREEN,BorderSizePixel=0},o.barBg)
   o.box=raw("BoxHandleAdornment",{AlwaysOnTop=true,ZIndex=5,Size=BOXN,Transparency=0.65,Visible=false},gui)
-  if hasDraw then
-   o.line=newDraw("Line")
-   if o.line then pcall(function() o.line.Thickness=S.peTW end) end
-   o.look=newDraw("Line")
-   if o.look then pcall(function() o.look.Thickness=1 end) end
-   local a1,a2,a3=newDraw("Line"),newDraw("Line"),newDraw("Line")
-   if a1 and a2 and a3 then
-    o.arrow={a1,a2,a3}
-    for _,l in ipairs(o.arrow) do pcall(function() l.Thickness=2 end) end
-   end
-  end
   return o
  end
- local function skelHide(o)
-  for _,l in ipairs(o.skel) do pcall(function() l.Visible=false end) end
- end
  local function hideObj(o)
+  if o.hidden then return end
+  o.hidden=true
   if o.bb.Enabled then o.bb.Enabled=false end
   if o.box.Visible then o.box.Visible=false end
   if o.hl and o.hl.Enabled then o.hl.Enabled=false end
-  if o.line then pcall(function() o.line.Visible=false end) end
-  if o.look then pcall(function() o.look.Visible=false end) end
-  if o.arrow then for _,l in ipairs(o.arrow) do pcall(function() l.Visible=false end) end end
-  skelHide(o)
+  hideD(o.line) hideD(o.look) hideD(o.circ)
+  hideList(o.skel) hideList(o.bx) hideList(o.hbl) hideList(o.arrow)
  end
+
  local function skelDraw(o,ch,cam,col)
   local set=ch:FindFirstChild("UpperTorso") and SKEL15 or SKEL6
+  local lines=getLines(o,"skel",#set)
   for i,pr in ipairs(set) do
-   local l=o.skel[i]
-   if not l then
-    local ln=newDraw("Line")
-    if ln then l=ln o.skel[i]=l end
-   end
+   local l=lines[i]
    if l then
     pcall(function()
      local a,b=ch:FindFirstChild(pr[1]),ch:FindFirstChild(pr[2])
@@ -3661,22 +3732,250 @@ end)()
     end)
    end
   end
-  for i=#set+1,#o.skel do pcall(function() o.skel[i].Visible=false end) end
+  for i=#set+1,#lines do pcall(function() lines[i].Visible=false end) end
+ end
+
+ -- 2D-Box (voll oder Ecken) + seitlicher Lebensbalken
+ local function draw2D(o,hrp,cam,col,hpPct)
+  local bx=getLines(o,"bx",8)
+  if #bx<8 then return end
+  pcall(function()
+   local hp=hrp.Position
+   local top=cam:WorldToViewportPoint(hp+Vector3.new(0,2.9,0))
+   local bot=cam:WorldToViewportPoint(hp-Vector3.new(0,3.2,0))
+   if top.Z<=0 or bot.Z<=0 then
+    for _,l in ipairs(bx) do l.Visible=false end
+    hideList(o.hbl)
+    return
+   end
+   local h=math.abs(bot.Y-top.Y)
+   local w=h*0.55
+   local cx=(top.X+bot.X)/2
+   local x1,x2,y1,y2=cx-w/2,cx+w/2,top.Y,bot.Y
+   local function L(i,ax,ay,bx_,by)
+    local l=bx[i]
+    l.From=Vector2.new(ax,ay) l.To=Vector2.new(bx_,by) l.Color=col l.Thickness=1.5 l.Visible=true
+   end
+   if S.peBoxStyle==2 then
+    L(1,x1,y1,x2,y1) L(2,x2,y1,x2,y2) L(3,x2,y2,x1,y2) L(4,x1,y2,x1,y1)
+    for i=5,8 do bx[i].Visible=false end
+   else
+    local len=math.min(w,h)*0.3
+    L(1,x1,y1,x1+len,y1) L(2,x1,y1,x1,y1+len)
+    L(3,x2,y1,x2-len,y1) L(4,x2,y1,x2,y1+len)
+    L(5,x1,y2,x1+len,y2) L(6,x1,y2,x1,y2-len)
+    L(7,x2,y2,x2-len,y2) L(8,x2,y2,x2,y2-len)
+   end
+   if S.peHp then
+    local hb=getLines(o,"hbl",2)
+    if #hb==2 then
+     local bxp=x1-5
+     hb[1].From=Vector2.new(bxp,y2) hb[1].To=Vector2.new(bxp,y1) hb[1].Color=Color3.new(0,0,0) hb[1].Thickness=4 hb[1].Visible=true
+     hb[2].From=Vector2.new(bxp,y2) hb[2].To=Vector2.new(bxp,y2-(y2-y1)*hpPct) hb[2].Color=REDC:Lerp(GREEN,hpPct) hb[2].Thickness=2 hb[2].Visible=true
+    end
+   else
+    hideList(o.hbl)
+   end
+  end)
  end
 
  conn(Players.PlayerRemoving:Connect(function(pl)
   local o=objs[pl]
   if o then destroyObj(o) objs[pl]=nil end
-  X.vis[pl]=nil X.friend[pl]=nil
+  X.vis[pl]=nil X.friend[pl]=nil X.alerted[pl]=nil
   if specTarget==pl then specTarget=nil end
   if X.focus==pl then X.focus=nil end
+  if S.peJoin then notify(trf("pe_left",pl.DisplayName),C.bad,true) end
+ end))
+ conn(Players.PlayerAdded:Connect(function(pl)
+  if S.peJoin then notify(trf("pe_joined",pl.DisplayName),C.good,true) end
  end))
 
- --// Render-Schleife
+ --// ---------- Spieler zeichnen ----------
+ local function drawPlayer(c)
+  local cx=X.c
+  local cam,now,doText=cx.cam,cx.now,cx.doText
+  local pl,ch,hrp,hum,d,focus=c.pl,c.ch,c.hrp,c.hum,c.d,c.focus
+  local o=objs[pl]
+  if not o then o=makeObj() objs[pl]=o end
+  o.hidden=false
+  if cx.rp then
+   local okr,hitr=pcall(function() return workspace:Raycast(cx.camPos,hrp.Position-cx.camPos,cx.rp) end)
+   X.vis[pl]=(okr and hitr==nil)
+  end
+  local hpPct=(hum.MaxHealth>0) and math.clamp(hum.Health/hum.MaxHealth,0,1) or 0
+  local col=colorFor(pl,hum,now,X.vis[pl],focus)
+  if S.peLow and not focus and hpPct*100<S.peLowPct then
+   col=Color3.fromRGB(255,110+math.floor(110*math.abs(math.sin(now*8))),0)
+  end
+  if o.bb.Adornee~=hrp then o.bb.Adornee=hrp end
+  if o.box.Adornee~=hrp then o.box.Adornee=hrp end
+  local hit=S.hbOn and hbOrig[hrp]~=nil
+  local realY=(hbOrig[hrp] and hbOrig[hrp].s.Y or hrp.Size.Y)
+  local off=(S.peTagPos==2) and -(realY/2+4.6) or (realY/2+2.6)
+  o.bb.StudsOffset=Vector3.new(0,off,0)
+  -- 3D-Box (waechst mit der Hitbox mit)
+  local boxOn=(S.peBox and S.peBoxStyle==1) or (S.hbEsp and hit)
+  if o.box.Visible~=boxOn then o.box.Visible=boxOn end
+  if boxOn then
+   o.box.Color3=col
+   local want=hit and Vector3.new(S.hbSize,S.hbSize,S.hbSize) or BOXN
+   if o.box.Size~=want then o.box.Size=want end
+   o.box.Transparency=hit and 0.8 or 0.65
+  end
+  -- Chams
+  if S.peChams then
+   if not o.hl then
+    o.hl=raw("Highlight",{FillColor=col,OutlineColor=Color3.new(1,1,1),DepthMode=Enum.HighlightDepthMode.AlwaysOnTop,Enabled=false},gui)
+   end
+   if o.hl.Adornee~=ch then o.hl.Adornee=ch end
+   o.hl.FillColor=col
+   o.hl.OutlineColor=col:Lerp(Color3.new(1,1,1),0.5)
+   o.hl.FillTransparency=S.peChamsT
+   cx.chams[#cx.chams+1]={o=o,d=d}
+  elseif o.hl and o.hl.Enabled then
+   o.hl.Enabled=false
+  end
+  -- Nametag
+  local use2D=hasDraw and S.peBox and S.peBoxStyle>=2
+  local showTag=S.peName or S.peTool or S.peDist or S.peHp or S.peTeamTag or S.peStats or S.peVel
+  o.bb.Enabled=showTag
+  if showTag then
+   o.lb.TextColor3=col
+   o.lb.Font=cx.fnt
+   o.lb.TextSize=S.peScale and math.floor(math.clamp(S.peText*(1.25-d/800),9,S.peText+4)) or S.peText
+   if doText then
+    local lines={}
+    if S.peName then
+     local nm=pl.DisplayName
+     if S.peNameMode==2 then nm=pl.Name elseif S.peNameMode==3 then nm=pl.DisplayName.." (@"..pl.Name..")" end
+     lines[#lines+1]=(focus and ">> " or "")..nm
+    end
+    if S.peTeamTag and pl.Team then lines[#lines+1]="{"..pl.Team.Name.."}" end
+    if S.peTool then
+     local tl=ch:FindFirstChildOfClass("Tool")
+     if tl then lines[#lines+1]="["..tl.Name.."]" end
+    end
+    if S.peStats then
+     local st=statsText(pl)
+     if st then lines[#lines+1]=st end
+    end
+    local info={}
+    if S.peDist then info[#info+1]=math.floor(d).." m" end
+    if S.peHp then info[#info+1]=math.floor(hum.Health).." HP" end
+    if S.peVel then info[#info+1]=math.floor(hrp.AssemblyLinearVelocity.Magnitude).." s/s" end
+    if #info>0 then lines[#lines+1]=table.concat(info,"  ") end
+    o.lb.Text=table.concat(lines,"\n")
+   end
+   local showBar=S.peHp and not use2D
+   o.barBg.Visible=showBar
+   if showBar then
+    o.bar.Size=UDim2.fromScale(hpPct,1)
+    o.bar.BackgroundColor3=REDC:Lerp(GREEN,hpPct)
+   end
+  end
+  -- Drawing-Features
+  local v,on=cam:WorldToViewportPoint(hrp.Position)
+  if S.peTracer then
+   local l=getD(o,"line","Line")
+   if l then
+    pcall(function()
+     l.Visible=on
+     if on then
+      l.Color=col
+      l.Thickness=S.peTW+(focus and 1 or 0)
+      l.From=cx.origin
+      l.To=Vector2.new(v.X,v.Y)
+     end
+    end)
+   end
+  else
+   hideD(o.line)
+  end
+  if S.peSkel then skelDraw(o,ch,cam,col) else hideList(o.skel) end
+  if use2D then draw2D(o,hrp,cam,col,hpPct) else hideList(o.bx) hideList(o.hbl) end
+  if S.peLook then
+   local l=getD(o,"look","Line")
+   if l then
+    pcall(function()
+     local head=ch:FindFirstChild("Head")
+     local shown=false
+     if head then
+      local p1,on1=cam:WorldToViewportPoint(head.Position)
+      local p2,on2=cam:WorldToViewportPoint(head.Position+head.CFrame.LookVector*10)
+      if on1 and on2 then
+       l.From=Vector2.new(p1.X,p1.Y)
+       l.To=Vector2.new(p2.X,p2.Y)
+       l.Color=col
+       l.Thickness=2
+       shown=true
+      end
+     end
+     l.Visible=shown
+    end)
+   end
+  else
+   hideD(o.look)
+  end
+  if S.peHead then
+   local circ=getD(o,"circ","Circle")
+   if circ then
+    pcall(function()
+     local head=ch:FindFirstChild("Head")
+     if head then
+      local p1,o1=cam:WorldToViewportPoint(head.Position)
+      local p2=cam:WorldToViewportPoint(head.Position+cam.CFrame.UpVector*0.9)
+      if o1 then
+       local a,b=Vector2.new(p1.X,p1.Y),Vector2.new(p2.X,p2.Y)
+       circ.Position=a
+       circ.Radius=math.max(3,(a-b).Magnitude)
+       circ.Color=col
+       circ.Thickness=1.5
+       circ.NumSides=20
+       circ.Filled=false
+       circ.Visible=true
+      else
+       circ.Visible=false
+      end
+     else
+      circ.Visible=false
+     end
+    end)
+   end
+  else
+   hideD(o.circ)
+  end
+  if S.peArrow and not on then
+   local ar=getLines(o,"arrow",3)
+   if #ar==3 then
+    pcall(function()
+     local rel=cam.CFrame:PointToObjectSpace(hrp.Position)
+     local dir=Vector2.new(rel.X,rel.Z)
+     if dir.Magnitude<0.001 then dir=Vector2.new(0,-1) end
+     dir=dir.Unit
+     local rad=math.min(cx.vs.X,cx.vs.Y)*0.42
+     local pc=cx.scr+dir*rad
+     local perp=Vector2.new(-dir.Y,dir.X)
+     local tip=pc+dir*14
+     local bl=pc-dir*8+perp*10
+     local br=pc-dir*8-perp*10
+     ar[1].From=tip ar[1].To=bl
+     ar[2].From=tip ar[2].To=br
+     ar[3].From=bl ar[3].To=br
+     for _,l in ipairs(ar) do l.Color=col l.Thickness=2 l.Visible=true end
+    end)
+   end
+  else
+   hideList(o.arrow)
+  end
+ end
+
+ --// ---------- Render-Schleife ----------
  local textT=0
  conn(RS.RenderStepped:Connect(function()
   local cam=workspace.CurrentCamera
   if not cam then return end
+  local cx=X.c
   local now=tick()
   local doText=now>=textT
   if doText then textT=now+0.1 end
@@ -3689,168 +3988,64 @@ end)()
   if S.peTOrigin==2 then origin=Vector2.new(vs.X/2,vs.Y/2)
   elseif S.peTOrigin==3 then origin=Vector2.new(vs.X/2,0)
   else origin=Vector2.new(vs.X/2,vs.Y) end
-  local scr=Vector2.new(vs.X/2,vs.Y/2)
-  local fnt=espFontEnum()
+  cx.cam=cam cx.now=now cx.doText=doText cx.camPos=camPos cx.vs=vs cx.origin=origin
+  cx.scr=Vector2.new(vs.X/2,vs.Y/2) cx.fnt=espFontEnum() cx.chams={} cx.rp=nil
   -- Sichtbarkeits-Raycast (nur im Farbmodus "Sichtbar"): alle Charaktere werden ignoriert
-  local rp
   if doText and S.peColor==5 then
    local ign={}
    for _,q in ipairs(Players:GetPlayers()) do
     if q.Character then ign[#ign+1]=q.Character end
    end
-   rp=RaycastParams.new()
+   local rp=RaycastParams.new()
    rp.FilterType=Enum.RaycastFilterType.Exclude
    rp.FilterDescendantsInstances=ign
+   cx.rp=rp
   end
-  local chamList={}
-  for _,pl in ipairs(Players:GetPlayers()) do
-   if pl~=P then
-    local o=objs[pl]
-    local ch=pl.Character
-    local hrp=ch and ch:FindFirstChild("HumanoidRootPart")
-    local hum=ch and ch:FindFirstChildOfClass("Humanoid")
-    local focus=(X.focus==pl)
-    local ok=S.peOn and hrp~=nil and hum~=nil and hum.Health>0
-    if ok and S.peTeam and isMate(pl) and not focus then ok=false end
-    local d=0
-    if ok then
-     d=(hrp.Position-ref).Magnitude
-     if S.peMax>0 and d>S.peMax and not focus then ok=false end
-    end
-    if ok then
-     if not o then o=makeObj() objs[pl]=o end
-     if rp then
-      local okr,hit=pcall(function() return workspace:Raycast(camPos,hrp.Position-camPos,rp) end)
-      X.vis[pl]=(okr and hit==nil)
+  -- Kandidaten sammeln
+  local cand={}
+  if S.peOn then
+   for _,pl in ipairs(Players:GetPlayers()) do
+    if pl~=P then
+     local ch=pl.Character
+     local hrp=ch and ch:FindFirstChild("HumanoidRootPart")
+     local hum=ch and ch:FindFirstChildOfClass("Humanoid")
+     if hrp and hum and hum.Health>0 then
+      local focus=(X.focus==pl)
+      local d=(hrp.Position-ref).Magnitude
+      local ok=true
+      if S.peTeam and isMate(pl) and not focus then ok=false end
+      if ok and S.peMax>0 and d>S.peMax and not focus then ok=false end
+      if ok then cand[#cand+1]={pl=pl,ch=ch,hrp=hrp,hum=hum,d=d,focus=focus} end
      end
-     local col=colorFor(pl,hum,now,X.vis[pl],focus)
-     if o.bb.Adornee~=hrp then o.bb.Adornee=hrp end
-     if o.box.Adornee~=hrp then o.box.Adornee=hrp end
-     -- Tag und Box beziehen sich auf die ECHTE Koerpergroesse bzw. die Hitbox-Groesse
-     local hit=S.hbOn and hbOrig[hrp]~=nil
-     local realY=(hbOrig[hrp] and hbOrig[hrp].s.Y or hrp.Size.Y)
-     o.bb.StudsOffset=Vector3.new(0,realY/2+2.6,0)
-     -- Box (waechst mit der Hitbox mit)
-     local boxOn=S.peBox or (S.hbEsp and hit)
-     if o.box.Visible~=boxOn then o.box.Visible=boxOn end
-     if boxOn then
-      o.box.Color3=col
-      local want=hit and Vector3.new(S.hbSize,S.hbSize,S.hbSize) or BOXN
-      if o.box.Size~=want then o.box.Size=want end
-      o.box.Transparency=hit and 0.8 or 0.65
-     end
-     -- Chams
-     if S.peChams then
-      if not o.hl then
-       o.hl=raw("Highlight",{FillColor=col,OutlineColor=Color3.new(1,1,1),DepthMode=Enum.HighlightDepthMode.AlwaysOnTop,Enabled=false},gui)
-      end
-      if o.hl.Adornee~=ch then o.hl.Adornee=ch end
-      o.hl.FillColor=col
-      o.hl.OutlineColor=col:Lerp(Color3.new(1,1,1),0.5)
-      o.hl.FillTransparency=S.peChamsT
-      chamList[#chamList+1]={o=o,d=d}
-     elseif o.hl and o.hl.Enabled then
-      o.hl.Enabled=false
-     end
-     -- Nametag
-     local showTag=S.peName or S.peTool or S.peDist or S.peHp
-     o.bb.Enabled=showTag
-     if showTag then
-      o.lb.TextColor3=col
-      o.lb.TextSize=S.peText
-      o.lb.Font=fnt
-      if doText then
-       local lines={}
-       if S.peName then lines[#lines+1]=(focus and ">> " or "")..pl.DisplayName end
-       if S.peTool then
-        local tl=ch:FindFirstChildOfClass("Tool")
-        if tl then lines[#lines+1]="["..tl.Name.."]" end
-       end
-       local info={}
-       if S.peDist then info[#info+1]=math.floor(d).." m" end
-       if S.peHp then info[#info+1]=math.floor(hum.Health).." HP" end
-       if #info>0 then lines[#lines+1]=table.concat(info,"  ") end
-       o.lb.Text=table.concat(lines,"\n")
-      end
-      o.barBg.Visible=S.peHp
-      if S.peHp then
-       local r=hum.MaxHealth>0 and math.clamp(hum.Health/hum.MaxHealth,0,1) or 0
-       o.bar.Size=UDim2.fromScale(r,1)
-       o.bar.BackgroundColor3=REDC:Lerp(GREEN,r)
-      end
-     end
-     -- Tracer
-     local v,on=cam:WorldToViewportPoint(hrp.Position)
-     if o.line then
-      pcall(function()
-       local vis=S.peTracer and on
-       o.line.Visible=vis
-       if vis then
-        o.line.Color=col
-        o.line.Thickness=S.peTW+(focus and 1 or 0)
-        o.line.From=origin
-        o.line.To=Vector2.new(v.X,v.Y)
-       end
-      end)
-     end
-     -- Skelett
-     if S.peSkel and hasDraw then skelDraw(o,ch,cam,col) else skelHide(o) end
-     -- Blickrichtung
-     if o.look then
-      pcall(function()
-       local head=ch:FindFirstChild("Head")
-       local shown=false
-       if S.peLook and head then
-        local p1,on1=cam:WorldToViewportPoint(head.Position)
-        local p2,on2=cam:WorldToViewportPoint(head.Position+head.CFrame.LookVector*10)
-        if on1 and on2 then
-         o.look.From=Vector2.new(p1.X,p1.Y)
-         o.look.To=Vector2.new(p2.X,p2.Y)
-         o.look.Color=col
-         o.look.Thickness=2
-         shown=true
-        end
-       end
-       o.look.Visible=shown
-      end)
-     end
-     -- Offscreen-Pfeil (3 Linien statt Triangle, laeuft auf jedem Executor)
-     if o.arrow then
-      pcall(function()
-       if S.peArrow and not on then
-        local rel=cam.CFrame:PointToObjectSpace(hrp.Position)
-        local dir=Vector2.new(rel.X,rel.Z)
-        if dir.Magnitude<0.001 then dir=Vector2.new(0,-1) end
-        dir=dir.Unit
-        local rad=math.min(vs.X,vs.Y)*0.42
-        local pc=scr+dir*rad
-        local perp=Vector2.new(-dir.Y,dir.X)
-        local tip=pc+dir*14
-        local bl=pc-dir*8+perp*10
-        local br=pc-dir*8-perp*10
-        local a1,a2,a3=o.arrow[1],o.arrow[2],o.arrow[3]
-        a1.From=tip a1.To=bl
-        a2.From=tip a2.To=br
-        a3.From=bl a3.To=br
-        for _,l in ipairs(o.arrow) do l.Color=col l.Visible=true end
-       else
-        for _,l in ipairs(o.arrow) do l.Visible=false end
-       end
-      end)
-     end
-    elseif o then
-     hideObj(o)
     end
    end
   end
+  -- Nur die N naechsten Spieler
+  local allow
+  if S.peNearN>0 and #cand>S.peNearN then
+   table.sort(cand,function(a,b) return a.d<b.d end)
+   allow={}
+   for i=1,S.peNearN do allow[cand[i].pl]=true end
+  end
+  local seen={}
+  for _,c in ipairs(cand) do
+   if not allow or allow[c.pl] or c.focus then
+    seen[c.pl]=true
+    drawPlayer(c)
+   end
+  end
+  for pl,o in pairs(objs) do
+   if not seen[pl] then hideObj(o) end
+  end
   -- Chams: nur die 8 naechsten Spieler (Roblox-Limit fuer Highlights)
-  if #chamList>0 then
-   table.sort(chamList,function(a,b) return a.d<b.d end)
-   for i,it in ipairs(chamList) do it.o.hl.Enabled=(i<=8) end
+  local cl=cx.chams
+  if #cl>0 then
+   table.sort(cl,function(a,b) return a.d<b.d end)
+   for i,it in ipairs(cl) do it.o.hl.Enabled=(i<=8) end
   end
  end))
 
- --// Hitbox
+ --// ---------- Hitbox ----------
  local function hbRestore(part)
   local o=hbOrig[part]
   if not o then return end
@@ -3895,7 +4090,7 @@ end)()
     local hrp=ch and ch:FindFirstChild("HumanoidRootPart")
     local head=ch and ch:FindFirstChild("Head")
     local hum=ch and ch:FindFirstChildOfClass("Humanoid")
-    local want=S.hbOn and hum~=nil and hum.Health>0 and not (S.hbTeam and isMate(pl))
+    local want=S.hbOn and hum~=nil and hum.Health>0 and not (S.hbTeam and isMate(pl)) and (not S.hbFocus or X.focus==pl)
     local col
     if want and S.hbPaint then col=colorFor(pl,hum,now,X.vis[pl],X.focus==pl) end
     local sz=Vector3.new(S.hbSize,S.hbSize,S.hbSize)
@@ -3928,7 +4123,7 @@ end)()
   if not S.hbOn and next(hbOrig) then hbRestoreAll() end
  end))
 
- --// Zuschauen
+ --// ---------- Zuschauen ----------
  local function setSpec(pl,quiet)
   local cam=workspace.CurrentCamera
   if not cam then return end
@@ -3945,6 +4140,15 @@ end)()
    if not quiet then notify(tr("pl_view_off"),C.acc,true) end
   end
  end
+ local function specStep(dir)
+  local ordl=X.order
+  if #ordl==0 then return end
+  local idx=0
+  for i,pl in ipairs(ordl) do if pl==specTarget then idx=i break end end
+  if idx==0 then idx=(dir>0) and 1 or #ordl
+  else idx=((idx-1+dir)%#ordl)+1 end
+  setSpec(ordl[idx])
+ end
  conn(RS.RenderStepped:Connect(function()
   if not specTarget then return end
   local cam=workspace.CurrentCamera
@@ -3952,7 +4156,24 @@ end)()
   if cam and h and cam.CameraSubject~=h then cam.CameraSubject=h end
  end))
 
- --// Mini-Radar (verschiebbar, laeuft unabhaengig vom Hauptschalter)
+ --// ---------- Overlays: Radar, Fadenkreuz, Fokus-Karte ----------
+ local function makeDraggable(f)
+  local dragging,dStart,sPos
+  f.InputBegan:Connect(function(i)
+   if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+    dragging=true dStart=i.Position sPos=f.Position
+    i.Changed:Connect(function() if i.UserInputState==Enum.UserInputState.End then dragging=false end end)
+   end
+  end)
+  conn(UIS.InputChanged:Connect(function(i)
+   if dragging and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
+    local d=i.Position-dStart
+    f.Position=UDim2.new(sPos.X.Scale,sPos.X.Offset+d.X,sPos.Y.Scale,sPos.Y.Offset+d.Y)
+   end
+  end))
+ end
+
+ -- Radar
  do
   local sz0=S.peRadarS
   local rf=raw("Frame",{Name="AntonioRadar",Size=UDim2.fromOffset(sz0,sz0),Position=UDim2.new(1,-sz0-14,0,60),BackgroundColor3=Color3.new(0,0,0),
@@ -3967,19 +4188,7 @@ end)()
   local rl=raw("TextLabel",{BackgroundTransparency=1,Size=UDim2.new(1,0,0,14),Position=UDim2.new(0,0,1,-18),TextColor3=Color3.new(1,1,1),TextTransparency=0.4,
    Font=Enum.Font.GothamBold,TextSize=10,Text="",ZIndex=6},rf)
   X.radar=rf
-  local dragging,dStart,sPos
-  rf.InputBegan:Connect(function(i)
-   if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
-    dragging=true dStart=i.Position sPos=rf.Position
-    i.Changed:Connect(function() if i.UserInputState==Enum.UserInputState.End then dragging=false end end)
-   end
-  end)
-  conn(UIS.InputChanged:Connect(function(i)
-   if dragging and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
-    local d=i.Position-dStart
-    rf.Position=UDim2.new(sPos.X.Scale,sPos.X.Offset+d.X,sPos.Y.Scale,sPos.Y.Offset+d.Y)
-   end
-  end))
+  makeDraggable(rf)
   conn(RS.RenderStepped:Connect(function()
    if rf.Visible~=S.peRadar then rf.Visible=S.peRadar end
    if not S.peRadar then return end
@@ -3996,11 +4205,17 @@ end)()
    local myc=P.Character
    local myh=myc and myc:FindFirstChild("HumanoidRootPart")
    local ref=myh and myh.Position or cam.CFrame.Position
-   local lv=cam.CFrame.LookVector
-   local look=Vector3.new(lv.X,0,lv.Z)
-   if look.Magnitude<0.01 then look=Vector3.new(0,0,-1) end
-   look=look.Unit
-   local right=Vector3.new(-look.Z,0,look.X)
+   local look,right
+   if S.peRadarRot then
+    local lv=cam.CFrame.LookVector
+    look=Vector3.new(lv.X,0,lv.Z)
+    if look.Magnitude<0.01 then look=Vector3.new(0,0,-1) end
+    look=look.Unit
+    right=Vector3.new(-look.Z,0,look.X)
+   else
+    look=Vector3.new(0,0,-1)
+    right=Vector3.new(1,0,0)
+   end
    local n=0
    for _,pl in ipairs(Players:GetPlayers()) do
     if pl~=P then
@@ -4020,8 +4235,11 @@ end)()
       local py=-rel:Dot(look)/range*half
       local v=Vector2.new(px,py)
       if v.Magnitude>half-5 then v=v.Unit*(half-5) end
+      local foc=(X.focus==pl)
+      local ds=foc and 10 or 7
+      dot.Size=UDim2.fromOffset(ds,ds)
       dot.Position=UDim2.fromOffset(half+v.X,half+v.Y)
-      dot.BackgroundColor3=colorFor(pl,hum,now,X.vis[pl],X.focus==pl)
+      dot.BackgroundColor3=colorFor(pl,hum,now,X.vis[pl],foc)
       dot.Visible=true
      end
     end
@@ -4030,43 +4248,181 @@ end)()
   end))
  end
 
- --// Seite aufbauen
+ -- Fadenkreuz
+ do
+  local GSv=game:GetService("GuiService")
+  local cf=raw("Frame",{Name="AntonioCross",Size=UDim2.fromOffset(60,60),AnchorPoint=Vector2.new(0.5,0.5),BackgroundTransparency=1,Visible=S.peCross,ZIndex=7},gui)
+  local arms={}
+  for i=1,4 do
+   arms[i]=raw("Frame",{BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0,ZIndex=7},cf)
+   raw("UIStroke",{Color=Color3.new(0,0,0),Thickness=1,ApplyStrokeMode=Enum.ApplyStrokeMode.Border},arms[i])
+  end
+  X.cross=cf
+  task.spawn(function()
+   while alive do
+    cf.Visible=S.peCross
+    if S.peCross then
+     local ins=GSv:GetGuiInset()
+     cf.Position=UDim2.new(0.5,0,0.5,ins.Y/2)
+     local sz=S.peCrossSize
+     local gap=3
+     cf.Size=UDim2.fromOffset(sz*2+gap*2,sz*2+gap*2)
+     local m=sz+gap
+     arms[1].Size=UDim2.fromOffset(sz,2) arms[1].Position=UDim2.fromOffset(0,m-1)
+     arms[2].Size=UDim2.fromOffset(sz,2) arms[2].Position=UDim2.fromOffset(m+gap,m-1)
+     arms[3].Size=UDim2.fromOffset(2,sz) arms[3].Position=UDim2.fromOffset(m-1,0)
+     arms[4].Size=UDim2.fromOffset(2,sz) arms[4].Position=UDim2.fromOffset(m-1,m+gap)
+     for _,a in ipairs(arms) do a.BackgroundColor3=C.acc end
+    end
+    task.wait(0.2)
+   end
+  end)
+ end
+
+ -- Fokus-Karte (verschiebbar)
+ do
+  local cf=raw("Frame",{Name="AntonioCard",Size=UDim2.fromOffset(230,74),Position=UDim2.fromOffset(12,120),BackgroundColor3=Color3.new(0,0,0),
+   BackgroundTransparency=0.3,BorderSizePixel=0,Active=true,Visible=S.peCard,ZIndex=5},gui)
+  raw("UICorner",{CornerRadius=UDim.new(0,8)},cf)
+  local cst=raw("UIStroke",{Color=GOLD,Thickness=1.5,Transparency=0.2,ApplyStrokeMode=Enum.ApplyStrokeMode.Border},cf)
+  local cl=raw("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(10,4),Size=UDim2.new(1,-20,1,-8),TextColor3=Color3.new(1,1,1),
+   Font=Enum.Font.GothamBold,TextSize=12,TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top,Text="",ZIndex=6},cf)
+  X.card=cf
+  makeDraggable(cf)
+  task.spawn(function()
+   while alive do
+    cf.Visible=S.peCard
+    if S.peCard then
+     local pl=X.focus
+     local hum=pl and pl.Character and pl.Character:FindFirstChildOfClass("Humanoid")
+     local hrp=pl and pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
+     if pl and pl.Parent and hum and hrp then
+      local myh=P.Character and P.Character:FindFirstChild("HumanoidRootPart")
+      local d=myh and (hrp.Position-myh.Position).Magnitude or 0
+      local tl=pl.Character:FindFirstChildOfClass("Tool")
+      local extra=(tl and ("["..tl.Name.."]") or "")
+      if pl.Team then extra=extra.." {"..pl.Team.Name.."}" end
+      local st=statsText(pl)
+      if st then extra=extra.."\n"..st end
+      cl.Text=trf("card_t",pl.DisplayName.." (@"..pl.Name..")",math.floor(hum.Health),math.floor(d),math.floor(hrp.AssemblyLinearVelocity.Magnitude),extra)
+      cst.Color=GOLD
+     else
+      cl.Text=tr("card_none")
+      cst.Color=C.sub
+     end
+    end
+    task.wait(0.1)
+   end
+  end)
+ end
+
+ --// ---------- Hintergrund-Schleifen: Auto-Fokus, Naeheralarm ----------
+ task.spawn(function()
+  while alive do
+   if S.peAutoFocus>1 then
+    local myh=P.Character and P.Character:FindFirstChild("HumanoidRootPart")
+    local best,bv
+    for _,pl in ipairs(Players:GetPlayers()) do
+     if pl~=P and not (S.peTeam and isMate(pl)) then
+      local hrp=pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
+      local hum=pl.Character and pl.Character:FindFirstChildOfClass("Humanoid")
+      if hrp and hum and hum.Health>0 then
+       local v
+       if S.peAutoFocus==2 then v=myh and (hrp.Position-myh.Position).Magnitude or math.huge
+       else v=hum.Health end
+       if not bv or v<bv then best,bv=pl,v end
+      end
+     end
+    end
+    if best and X.focus~=best then X.focus=best end
+   end
+   task.wait(0.5)
+  end
+ end)
+ task.spawn(function()
+  while alive do
+   if S.peAlert then
+    local myh=P.Character and P.Character:FindFirstChild("HumanoidRootPart")
+    if myh then
+     for _,pl in ipairs(Players:GetPlayers()) do
+      if pl~=P and not (S.peTeam and isMate(pl)) then
+       local hrp=pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
+       if hrp then
+        local d=(hrp.Position-myh.Position).Magnitude
+        if d<=S.peAlertR then
+         if X.alerted[pl]==nil then
+          X.alerted[pl]=tick()
+          notify(trf("pe_alert_msg",pl.DisplayName,math.floor(d)),C.bad)
+         end
+        elseif d>S.peAlertR*1.3 then
+         X.alerted[pl]=nil
+        end
+       end
+      end
+     end
+    end
+   end
+   task.wait(0.5)
+  end
+ end)
+
+ --// Hotkey: K schaltet den Spieler-ESP
+ conn(UIS.InputBegan:Connect(function(i,gp)
+  if gp or not S.peHotkey then return end
+  if i.UserInputType==Enum.UserInputType.Keyboard and i.KeyCode==Enum.KeyCode.K and not UIS:GetFocusedTextBox() then
+   if tg.on then tg.on.set(not tg.on.get()) end
+  end
+ end))
+
+ --// ---------- Seite aufbauen ----------
  head(pe,"pe_preset")
  local pg=new("Frame",{Size=UDim2.new(1,0,0,38),BackgroundTransparency=1,LayoutOrder=ord(pe)},pe)
- new("UIGridLayout",{CellSize=UDim2.new(1/3,-7,0,38),CellPadding=UDim2.fromOffset(10,10),SortOrder=Enum.SortOrder.LayoutOrder},pg)
+ new("UIGridLayout",{CellSize=UDim2.new(0.25,-8,0,38),CellPadding=UDim2.fromOffset(10,10),SortOrder=Enum.SortOrder.LayoutOrder},pg)
+ local function setT(k,v) if tg[k] and tg[k].get()~=v then tg[k].set(v) end end
  makeButton(pg,"pe_all","acc",function()
-  for _,k in ipairs({"on","box","name","tool","dist","hp","tracer","skel","look","arrow","chams"}) do
-   if tg[k] and not tg[k].get() then tg[k].set(true) end
-  end
+  for _,k in ipairs({"on","box","name","tool","dist","hp","tracer","skel","look","arrow","chams","headc","teamtag","stats","vel"}) do setT(k,true) end
  end,1)
- makeButton(pg,"pe_min",Color3.fromRGB(90,60,200),function()
-  for k,t in pairs(tg) do
-   local keep=(k=="on" or k=="name" or k=="dist")
-   if t.get()~=keep then t.set(keep) end
-  end
+ makeButton(pg,"pm_legit",Color3.fromRGB(40,150,100),function()
+  for k in pairs(tg) do setT(k,false) end
+  setT("on",true) setT("box",true) setT("name",true) setT("dist",true) setT("hp",true)
+  S.peBoxStyle=3 save()
+  if boxSeg then boxSeg.set(3) end
  end,2)
+ makeButton(pg,"pe_min",Color3.fromRGB(90,60,200),function()
+  for k in pairs(tg) do setT(k,(k=="on" or k=="name" or k=="dist")) end
+ end,3)
  makeButton(pg,"pe_none","bad",function()
   for _,t in pairs(tg) do if t.get() then t.set(false) end end
- end,3)
+ end,4)
 
  head(pe,"pe_head")
  tg.on=makeToggle(pe,"pe_on","pe_on_sub",S.peOn,function(v) S.peOn=v save() end)
+ makeToggle(pe,"pe_hotkey","pe_hotkey_sub",S.peHotkey,function(v) S.peHotkey=v save() end)
+
  head(pe,"pe_show")
  tg.box=makeToggle(pe,"pe_box","pe_box_sub",S.peBox,function(v) S.peBox=v save() end)
+ boxSeg=makeSegment(pe,"pe_boxstyle",{"bs_3d","bs_2d","bs_corner"},S.peBoxStyle,function(i) S.peBoxStyle=i save() end)
  tg.name=makeToggle(pe,"pe_name","pe_name_sub",S.peName,function(v) S.peName=v save() end)
+ makeSegment(pe,"pe_namemode",{"nm_disp","nm_user","nm_both"},S.peNameMode,function(i) S.peNameMode=i save() end)
+ tg.teamtag=makeToggle(pe,"pe_teamtag","pe_teamtag_sub",S.peTeamTag,function(v) S.peTeamTag=v save() end)
  tg.tool=makeToggle(pe,"pe_tool","pe_tool_sub",S.peTool,function(v) S.peTool=v save() end)
+ tg.stats=makeToggle(pe,"pe_stats","pe_stats_sub",S.peStats,function(v) S.peStats=v save() end)
  tg.dist=makeToggle(pe,"pe_dist","pe_dist_sub",S.peDist,function(v) S.peDist=v save() end)
  tg.hp=makeToggle(pe,"pe_hp","pe_hp_sub",S.peHp,function(v) S.peHp=v save() end)
+ tg.vel=makeToggle(pe,"pe_vel","pe_vel_sub",S.peVel,function(v) S.peVel=v save() end)
+ makeSegment(pe,"pe_tagpos",{"o_top","o_bottom"},S.peTagPos,function(i) S.peTagPos=i save() end)
+ makeToggle(pe,"pe_scale","pe_scale_sub",S.peScale,function(v) S.peScale=v save() end)
+ makeSlider(pe,"pe_text",8,24,1,S.peText,function(v) S.peText=v save() end)
  tg.tracer=makeToggle(pe,"pe_tracer","pe_tracer_sub",S.peTracer,function(v) S.peTracer=v save() end)
  makeSegment(pe,"s_torigin",{"o_bottom","o_center","o_top"},S.peTOrigin,function(i) S.peTOrigin=i save() end)
  makeSlider(pe,"pe_tw",1,5,1,S.peTW,function(v) S.peTW=v save() end)
  tg.skel=makeToggle(pe,"pe_skel","pe_skel_sub",S.peSkel,function(v) S.peSkel=v save() end)
  makeSlider(pe,"pe_skelw",1,4,1,S.peSkelW,function(v) S.peSkelW=v save() end)
+ tg.headc=makeToggle(pe,"pe_headc","pe_headc_sub",S.peHead,function(v) S.peHead=v save() end)
  tg.chams=makeToggle(pe,"pe_chams","pe_chams_sub",S.peChams,function(v) S.peChams=v save() end)
  makeSlider(pe,"pe_chamst",0,1,0.1,S.peChamsT,function(v) S.peChamsT=v save() end)
  tg.look=makeToggle(pe,"pe_look","pe_look_sub",S.peLook,function(v) S.peLook=v save() end)
  tg.arrow=makeToggle(pe,"pe_arrow","pe_arrow_sub",S.peArrow,function(v) S.peArrow=v save() end)
- makeSlider(pe,"pe_text",8,24,1,S.peText,function(v) S.peText=v save() end)
 
  head(pe,"pe_filter")
  makeToggle(pe,"pe_team","pe_team_sub",S.peTeam,function(v) S.peTeam=v save() end)
@@ -4076,11 +4432,27 @@ end)()
   if v<=0 then return tr("s_inf") end
   return v.." m"
  end)
+ makeSlider(pe,"pe_nearn",0,30,1,S.peNearN,function(v) S.peNearN=v save() end,nil,function(v)
+  if v<=0 then return tr("pe_alln") end
+  return tostring(v)
+ end)
+ makeToggle(pe,"pe_low","pe_low_sub",S.peLow,function(v) S.peLow=v save() end)
+ makeSlider(pe,"pe_lowpct",5,90,5,S.peLowPct,function(v) S.peLowPct=v save() end,nil,function(v) return v.."%" end)
+ makeSegment(pe,"pe_auto",{"af_off","af_near","af_low"},S.peAutoFocus,function(i) S.peAutoFocus=i save() end)
 
- head(pe,"rd_head")
+ head(pe,"pe_alerts")
+ makeToggle(pe,"pe_alert","pe_alert_sub",S.peAlert,function(v) S.peAlert=v save() end)
+ makeSlider(pe,"pe_alertr",10,1000,10,S.peAlertR,function(v) S.peAlertR=v save() end,nil,function(v) return v.." m" end)
+ makeToggle(pe,"pe_join","pe_join_sub",S.peJoin,function(v) S.peJoin=v save() end)
+
+ head(pe,"pe_ovl")
  makeToggle(pe,"rd_on","rd_on_sub",S.peRadar,function(v) S.peRadar=v save() end)
+ makeToggle(pe,"rd_rot","rd_rot_sub",S.peRadarRot,function(v) S.peRadarRot=v save() end)
  makeSlider(pe,"rd_range",50,2000,50,S.peRadarR,function(v) S.peRadarR=v save() end,nil,function(v) return v.." m" end)
  makeSlider(pe,"rd_size",100,260,10,S.peRadarS,function(v) S.peRadarS=v save() end,nil,function(v) return v.." px" end)
+ makeToggle(pe,"pe_cross","pe_cross_sub",S.peCross,function(v) S.peCross=v save() end)
+ makeSlider(pe,"pe_crosss",4,40,1,S.peCrossSize,function(v) S.peCrossSize=v save() end,nil,function(v) return v.." px" end)
+ makeToggle(pe,"pe_card","pe_card_sub",S.peCard,function(v) S.peCard=v save() end)
 
  head(pe,"hb_head")
  hbTog=makeToggle(pe,"hb_on","hb_on_sub",S.hbOn,function(v) S.hbOn=v save() if not v then hbRestoreAll() end end)
@@ -4100,11 +4472,13 @@ end)()
  makeToggle(pe,"hb_body","hb_body_sub",S.hbBody,function(v) S.hbBody=v save() end)
  makeToggle(pe,"hb_headp","hb_headp_sub",S.hbHead,function(v) S.hbHead=v save() end)
  makeToggle(pe,"hb_team","hb_team_sub",S.hbTeam,function(v) S.hbTeam=v save() end)
+ makeToggle(pe,"hb_focus","hb_focus_sub",S.hbFocus,function(v) S.hbFocus=v save() end)
 
  --// Spielerliste
  head(pe,"pl_head")
  local cntLbl=makeLabelBox(pe,nil,nil,30)
  local nearLbl=makeLabelBox(pe,nil,nil,28)
+ makeSegment(pe,"pl_sort",{"ps_dist","ps_hp","ps_name"},S.peSort,function(i) S.peSort=i save() end)
  local qf=new("Frame",{Size=UDim2.new(1,0,0,38),BackgroundColor3=C.item,LayoutOrder=ord(pe)},pe)
  round(qf,10)
  local qfs=stroke(qf,C.border,0.3)
@@ -4131,7 +4505,11 @@ end)()
    notify(tr("pl_gone"),C.bad,true)
   end
  end)
- makeButton(pe,"pl_stop",Color3.fromRGB(70,74,100),function() setSpec(nil) end)
+ local sg=new("Frame",{Size=UDim2.new(1,0,0,38),BackgroundTransparency=1,LayoutOrder=ord(pe)},pe)
+ new("UIGridLayout",{CellSize=UDim2.new(1/3,-7,0,38),CellPadding=UDim2.fromOffset(10,10),SortOrder=Enum.SortOrder.LayoutOrder},sg)
+ makeButton(sg,"pl_prev",Color3.fromRGB(70,74,100),function() specStep(-1) end,1)
+ makeButton(sg,"pl_stop",Color3.fromRGB(150,60,80),function() setSpec(nil) end,2)
+ makeButton(sg,"pl_next",Color3.fromRGB(70,74,100),function() specStep(1) end,3)
  local noneLbl=makeLabelBox(pe,"pl_none",nil,30)
  local pool={}
  local function getRow(i)
@@ -4193,17 +4571,28 @@ end)()
     total=total+1
     if q=="" or string.find(string.lower(pl.Name),q,1,true) or string.find(string.lower(pl.DisplayName),q,1,true) then
      local hrp=pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
-     items[#items+1]={pl=pl,d=(hrp and myh) and (hrp.Position-myh.Position).Magnitude or math.huge}
+     local hum=pl.Character and pl.Character:FindFirstChildOfClass("Humanoid")
+     items[#items+1]={pl=pl,hum=hum,hp=hum and hum.Health or math.huge,d=(hrp and myh) and (hrp.Position-myh.Position).Magnitude or math.huge}
     end
    end
   end
-  table.sort(items,function(a,b) return a.d<b.d end)
+  if S.peSort==2 then
+   table.sort(items,function(a,b) if a.hp~=b.hp then return a.hp<b.hp end return a.d<b.d end)
+  elseif S.peSort==3 then
+   table.sort(items,function(a,b) return a.pl.DisplayName:lower()<b.pl.DisplayName:lower() end)
+  else
+   table.sort(items,function(a,b) return a.d<b.d end)
+  end
+  X.order={}
+  for i,it in ipairs(items) do X.order[i]=it.pl end
   cntLbl.Text=trf("pl_count",total)
   noneLbl.Parent.Visible=(#items==0)
-  nearLbl.Parent.Visible=(#items>0 and items[1].d<math.huge)
-  if #items>0 and items[1].d<math.huge then
-   nearLbl.Text=trf("pl_near",items[1].pl.DisplayName,math.floor(items[1].d))
+  local nearest
+  for _,it in ipairs(items) do
+   if it.d<math.huge and (not nearest or it.d<nearest.d) then nearest=it end
   end
+  nearLbl.Parent.Visible=(nearest~=nil)
+  if nearest then nearLbl.Text=trf("pl_near",nearest.pl.DisplayName,math.floor(nearest.d)) end
   for i,it in ipairs(items) do
    local r=getRow(i)
    local pl=it.pl
@@ -4211,9 +4600,8 @@ end)()
    r.f.Visible=true
    r.f.LayoutOrder=1000+i
    r.nm.Text=pl.DisplayName.."  (@"..pl.Name..")"
-   local hum=pl.Character and pl.Character:FindFirstChildOfClass("Humanoid")
    local s=(it.d<math.huge) and (math.floor(it.d).." m") or "-"
-   if hum then s=s.."  •  "..math.floor(hum.Health).." HP" end
+   if it.hum then s=s.."  •  "..math.floor(it.hum.Health).." HP" end
    if pl.Team then s=s.."  •  "..pl.Team.Name end
    r.sub.Text=s
    local isF=(X.focus==pl)
@@ -4230,17 +4618,34 @@ end)()
  conn(qBox:GetPropertyChangedSignal("Text"):Connect(function() pcall(refreshList) end))
  task.spawn(function()
   while alive do
-   if cur=="pesp" then pcall(refreshList) end
+   pcall(function()
+    if cur=="pesp" then refreshList() else
+     -- Reihenfolge fuer Zuschauen vor/zurueck auch ohne offene Seite aktuell halten
+     local myh=P.Character and P.Character:FindFirstChild("HumanoidRootPart")
+     local its={}
+     for _,pl in ipairs(Players:GetPlayers()) do
+      if pl~=P then
+       local hrp=pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
+       its[#its+1]={pl=pl,d=(hrp and myh) and (hrp.Position-myh.Position).Magnitude or math.huge}
+      end
+     end
+     table.sort(its,function(a,b) return a.d<b.d end)
+     X.order={}
+     for i,it in ipairs(its) do X.order[i]=it.pl end
+    end
+   end)
    task.wait(1)
   end
  end)
 
- makeLabelBox(pe,"pe_info",nil,132)
+ makeLabelBox(pe,"pe_info",nil,150)
 
  restorers[#restorers+1]=function()
   hbRestoreAll()
   for pl,o in pairs(objs) do destroyObj(o) objs[pl]=nil end
   pcall(function() X.radar:Destroy() end)
+  pcall(function() X.cross:Destroy() end)
+  pcall(function() X.card:Destroy() end)
   pcall(function() setSpec(nil,true) end)
  end
 end)()
@@ -5335,4 +5740,4 @@ closeHub=function()
 end
 closeB.MouseButton1Click:Connect(function() closeHub() end)
 
-print("Antonio Hub v4.7 geladen")
+print("Antonio Hub v4.8 geladen")
