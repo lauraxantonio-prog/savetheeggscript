@@ -1,4 +1,8 @@
---// ANTONIO HUB v4.5  (Start | ESP | Anzahl | Teleport | Visuals | Notifier | Webhook | Spieler | Spieler ESP | Performance | Tools | Autofarm | Home | Einstellungen)
+--// ANTONIO HUB v4.7  (Start | ESP | Anzahl | Teleport | Visuals | Notifier | Webhook | Spieler | Spieler ESP | Performance | Tools | Autofarm | Home | Einstellungen)
+--// v4.7: SPIELER-BEREICH NEU: Presets (Legit/Schnell), Speed-Modus Normal/CFrame, Sprint (Shift), Bunny-Hop, sanftes Fliegen mit Touch-Support, Schwerkraft, Anti-Void, Klick-Teleport (Strg+Klick), Wegpunkte pro Spiel, Hotkeys (F/N/G), Live-Anzeige. Werte bleiben gespeichert.
+--// v4.6: SPIELER ESP KOMPLETT AUSGEBAUT: Hitbox bis 250 Studs (Standard 25) + Presets (Klein/Mittel/Gross/Riesig), Hitbox-Box waechst mit der Hitbox mit, optional Oberkoerper, Neon-Einfaerbung.
+--//       Neu: Skelett, Chams (Highlight), Blickrichtung, Offscreen-Pfeile, Sichtbarkeits-Farbmodus (Raycast), Freunde in Cyan, Mini-Radar (verschiebbar),
+--//       Fokus-Spieler (Gold, ignoriert Filter), Spielersuche, Teleport zum naechsten Spieler. Tags bleiben ueber dem echten Kopf, auch bei riesiger Hitbox.
 --// v4.5: FIX ESP: Eier, die nicht mehr existieren, bleiben nicht mehr als "Geister"-ESP stehen. Gemerkte (entfernte) Eier werden verworfen, sobald du in die Naehe kommst (85 % der Streaming-Reichweite)
 --//       oder wenn die Merk-Dauer abgelaufen ist (neu: Einstellungen > Merk-Dauer entfernter Eier, Standard 300 s).
 --// v4.4: WEBHOOK NEU UND EINFACH: URL eintragen + speichern (bleibt fuer immer). Bei jedem Halloween / Skeleton / Bone King / Bone Demon / Thunder / Samurai / Demon Egg im Server wird ein Embed mit @everyone gesendet: Spiel-Link, Anzahl, Mutation (Normal / Gold / Diamant / Rainbow) und Groesse.
@@ -71,9 +75,15 @@ local S={
  -- neu in v4.3 (Spieler ESP / Hitbox)
  peOn=false,peBox=true,peName=true,peDist=true,peHp=true,peTool=true,peTracer=true,peTOrigin=1,peTW=1,
  peTeam=false,peColor=1,peMax=0,peText=13,
- hbOn=false,hbSize=8,hbTrans=0.6,hbHead=false,hbTeam=true,
+ hbOn=false,hbSize=25,hbTrans=0.6,hbHead=false,hbTeam=true,
  -- neu in v4.5 (Merk-Dauer entfernter Eier)
  ghostTime=300,
+ -- neu in v4.6 (Spieler ESP ausgebaut)
+ peSkel=false,peSkelW=1,peChams=false,peChamsT=0.5,peLook=false,peArrow=false,peFriend=true,
+ peRadar=false,peRadarR=300,peRadarS=150,
+ hbEsp=true,hbBody=false,hbPaint=true,
+ -- neu in v4.7 (Spieler-Bereich)
+ plSpeedVal=32,plJumpVal=100,plFlySpeed=60,plSpeedMode=1,plSprint=false,plSprintMul=1.6,plKeys=false,plCTP=false,plGravVal=100,plAntiVoid=false,wps={},
 }
 do
  if canFile then
@@ -95,9 +105,19 @@ if S.espv<2 then
  S.showSize=true
  S.espv=2
 end
-S.peColor=math.clamp(math.floor(S.peColor),1,4)
+S.peColor=math.clamp(math.floor(S.peColor),1,5)
 S.peTOrigin=math.clamp(math.floor(S.peTOrigin),1,3)
 S.ghostTime=math.clamp(S.ghostTime,30,1800)
+S.hbSize=math.clamp(S.hbSize,2,250)
+S.peRadarR=math.clamp(S.peRadarR,50,2000)
+S.peRadarS=math.clamp(S.peRadarS,100,260)
+S.peSkelW=math.clamp(S.peSkelW,1,4)
+S.plSpeedMode=math.clamp(math.floor(S.plSpeedMode),1,2)
+S.plSpeedVal=math.clamp(S.plSpeedVal,16,300)
+S.plJumpVal=math.clamp(S.plJumpVal,50,400)
+S.plFlySpeed=math.clamp(S.plFlySpeed,20,400)
+S.plSprintMul=math.clamp(S.plSprintMul,1.1,3)
+S.plGravVal=math.clamp(S.plGravVal,10,300)
 local noSave,saveQueued=false,false
 local function save()
  if not canFile or saveQueued or noSave then return end
@@ -323,7 +343,7 @@ add("speed","Speed","Speed") add("speed_sub","Eingestellte Laufgeschwindigkeit",
 add("jump","Sprungkraft","Jump power") add("jump_sub","Eingestellte Sprungstärke","Uses the selected jump strength") add("jump_val","Sprungstärke","Jump strength")
 add("infjump","Infinite Jump","Infinite jump") add("infjump_sub","Springen in der Luft","Jump in mid-air")
 add("noclip","Noclip","Noclip") add("noclip_sub","Durch Wände laufen","Walk through walls")
-add("fly","Fliegen","Fly") add("fly_sub","WASD, Leertaste = hoch, Strg = runter","WASD, Space = up, Ctrl = down") add("fly_speed","Flug-Tempo","Fly speed")
+add("fly","Fliegen","Fly") add("fly_sub","WASD / Stick, Leertaste = hoch, Strg = runter","WASD / stick, Space = up, Ctrl = down") add("fly_speed","Flug-Tempo","Fly speed")
 add("run","Auto-Run","Auto run") add("run_sub","Läuft automatisch vorwärts (WASD übernimmt die Steuerung)","Walks forward automatically (WASD takes over)")
 add("p_tp","Teleport & Charakter","Teleport & character")
 add("tp_egg","Zum nächsten Ei","To nearest egg") add("tp_none","Kein Ei gefunden","No egg found") add("tp_ok","Teleportiert zu %s","Teleported to %s")
@@ -331,11 +351,32 @@ add("reset_char","Charakter zurücksetzen","Reset character")
 add("rb_guard","Rubberband-Schutz","Rubberband guard")
 add("rb_guard_sub","Setzt dich zurück, wenn der Server dich zieht; senkt bei Dauerproblemen das Tempo","Snaps you back when the server pulls you; lowers speed if it keeps happening")
 add("rb_reduced","Server zieht dich zurück – Tempo reduziert","Server keeps pulling you back – speed reduced")
--- Spieler ESP (v4.3)
+-- Spieler-Bereich (v4.7)
+add("pm_head","Presets","Presets") add("pm_legit","Legit","Legit") add("pm_fast","Schnell","Fast") add("pm_off","Alles aus","Everything off")
+add("sm_mode","Speed-Modus","Speed mode") add("sm_normal","Normal","Normal") add("sm_cframe","CFrame","CFrame")
+add("sprint","Sprint (Shift)","Sprint (Shift)") add("sprint_sub","Shift halten = Speed × Faktor (Speed muss an sein)","Hold Shift = speed × factor (speed must be on)") add("sprint_mul","Sprint-Faktor","Sprint factor")
+add("bhop","Bunny-Hop","Bunny hop") add("bhop_sub","Leertaste halten = automatisch springen","Hold Space = jump automatically")
+add("p_fly","Fliegen","Flying")
+add("p_world","Welt","World")
+add("grav","Schwerkraft","Gravity") add("grav_sub","Ändert die Schwerkraft (nur bei dir)","Changes gravity (only for you)") add("grav_val","Schwerkraft-Stärke","Gravity strength")
+add("antivoid","Anti-Void","Anti void") add("antivoid_sub","Setzt dich zurück, wenn du ins Void fällst","Puts you back when you fall into the void")
+add("ctp","Klick-Teleport","Click teleport") add("ctp_sub","Strg + Linksklick teleportiert dich zur Mausposition","Ctrl + left click teleports you to the mouse position")
+add("tp_spawn","Zum Spawn","To spawn") add("no_spawn","Kein Spawn gefunden","No spawn found")
+add("wp_head","Wegpunkte","Waypoints") add("wp_name","Name (optional)...","Name (optional)...")
+add("wp_save","Position speichern","Save position") add("wp_empty","Noch keine Wegpunkte gespeichert.","No waypoints saved yet.")
+add("wp_saved","Wegpunkt gespeichert","Waypoint saved") add("wp_full","Maximal 20 Wegpunkte","Maximum of 20 waypoints")
+add("wp_default","Punkt %d","Point %d") add("wp_tp","Teleportiert zu %s","Teleported to %s")
+add("wp_info","Wegpunkte werden pro Spiel gespeichert.","Waypoints are saved per game.")
+add("p_keys","Hotkeys","Hotkeys") add("keys","Hotkeys aktiv","Hotkeys active") add("keys_sub","F = Fliegen, N = Noclip, G = Speed","F = fly, N = noclip, G = speed")
+add("p_live","Live","Live")
+add("pl_live","X %d  Y %d  Z %d  •  %d studs/s  •  %s","X %d  Y %d  Z %d  •  %d studs/s  •  %s")
+add("pl_ground","Boden","Ground") add("pl_air","Luft","Air")
+add("pm_info","Speed-Modus „CFrame“ umgeht WalkSpeed-Prüfungen; Server-Anti-Cheat kann trotzdem zurücksetzen. Rubberband-Schutz senkt dann das Tempo.","Speed mode “CFrame” bypasses WalkSpeed checks; server anti-cheat may still reset you. The rubberband guard then lowers the speed.")
+-- Spieler ESP (v4.3 / v4.6)
 add("pe_head","Spieler-ESP","Player ESP")
-add("pe_on","Spieler-ESP","Player ESP") add("pe_on_sub","Zeigt alle Spieler durch Wände","Shows all players through walls")
+add("pe_on","Spieler-ESP","Player ESP") add("pe_on_sub","Hauptschalter – zeigt alle Spieler durch Wände","Master switch – shows all players through walls")
 add("pe_preset","Presets","Presets")
-add("pe_all","Alles an","Everything on") add("pe_none","Alles aus","Everything off")
+add("pe_all","Alles an","Everything on") add("pe_none","Alles aus","Everything off") add("pe_min","Minimal","Minimal")
 add("pe_show","Anzeige","Display")
 add("pe_box","Box","Box") add("pe_box_sub","3D-Box um jeden Spieler","3D box around every player")
 add("pe_name","Nametags","Nametags") add("pe_name_sub","Name über dem Kopf","Name above the head")
@@ -344,28 +385,47 @@ add("pe_dist","Entfernung","Distance") add("pe_dist_sub","Meter zum Spieler","Me
 add("pe_hp","Leben","Health") add("pe_hp_sub","Lebenspunkte und Lebensbalken","Health points and health bar")
 add("pe_tracer","Tracer","Tracers") add("pe_tracer_sub","Linie zu jedem Spieler (Drawing nötig)","Line to every player (needs Drawing)")
 add("pe_tw","Tracer-Dicke","Tracer thickness")
+add("pe_skel","Skelett","Skeleton") add("pe_skel_sub","Knochen-Linien am Körper (Drawing nötig)","Bone lines on the body (needs Drawing)")
+add("pe_skelw","Skelett-Dicke","Skeleton thickness")
+add("pe_chams","Chams","Chams") add("pe_chams_sub","Füllt den ganzen Körper durch Wände (die 8 nächsten Spieler)","Fills the whole body through walls (nearest 8 players)")
+add("pe_chamst","Chams-Transparenz","Chams transparency")
+add("pe_look","Blickrichtung","Look direction") add("pe_look_sub","Linie zeigt, wohin der Spieler schaut (Drawing nötig)","Line shows where the player is looking (needs Drawing)")
+add("pe_arrow","Offscreen-Pfeile","Offscreen arrows") add("pe_arrow_sub","Pfeile am Bildrand für Spieler außerhalb des Bildes (Drawing nötig)","Arrows at the screen edge for players outside the view (needs Drawing)")
 add("pe_filter","Filter & Farben","Filters & colors")
 add("pe_team","Teammitglieder ausblenden","Hide teammates") add("pe_team_sub","Zeigt nur Gegner","Only shows enemies")
+add("pe_friend","Freunde hervorheben","Highlight friends") add("pe_friend_sub","Roblox-Freunde werden in Cyan angezeigt","Roblox friends are shown in cyan")
 add("pe_color","Farbmodus","Color mode")
-add("pc_team","Team","Team") add("pc_red","Rot","Red") add("pc_rainbow","Regenbogen","Rainbow") add("pc_health","Leben","Health")
+add("pc_team","Team","Team") add("pc_red","Rot","Red") add("pc_rainbow","Regenbogen","Rainbow") add("pc_health","Leben","Health") add("pc_vis","Sichtbar","Visible")
 add("pe_max","Max. Entfernung","Max. distance")
 add("pe_text","Textgröße","Text size")
+add("rd_head","Radar","Radar")
+add("rd_on","Mini-Radar","Mini radar") add("rd_on_sub","Kreis-Radar mit allen Spielern, am Titel verschiebbar","Circular radar with all players, draggable")
+add("rd_range","Radar-Reichweite","Radar range") add("rd_size","Radar-Größe","Radar size")
 add("hb_head","Hitbox","Hitbox")
 add("hb_on","Hitbox vergrößern","Expand hitbox") add("hb_on_sub","Macht den Körper anderer Spieler größer (nur bei dir sichtbar)","Makes other players' bodies bigger (only visible to you)")
+add("hb_pre","Hitbox-Presets","Hitbox presets")
+add("hb_p1","Klein","Small") add("hb_p2","Mittel","Medium") add("hb_p3","Groß","Large") add("hb_p4","Riesig","Huge")
 add("hb_size","Hitbox-Größe","Hitbox size")
 add("hb_trans","Hitbox-Transparenz","Hitbox transparency")
+add("hb_esp","Hitbox-Box zeigen","Show hitbox box") add("hb_esp_sub","Zeigt die vergrößerte Hitbox als Box – wächst mit der Hitbox mit","Shows the expanded hitbox as a box – grows with the hitbox")
+add("hb_paint","Hitbox einfärben","Paint hitbox") add("hb_paint_sub","Neon-Farbe passend zum ESP, gut sichtbar","Neon color matching the ESP, easy to see")
+add("hb_body","Auch Oberkörper","Include torso") add("hb_body_sub","Vergrößert zusätzlich Torso / UpperTorso / LowerTorso","Also expands Torso / UpperTorso / LowerTorso")
 add("hb_headp","Auch Kopf","Include head") add("hb_headp_sub","Vergrößert zusätzlich den Kopf","Also expands the head")
 add("hb_team","Teammitglieder auslassen","Skip teammates") add("hb_team_sub","Nur Gegner bekommen eine große Hitbox","Only enemies get a big hitbox")
 add("pl_head","Spielerliste","Player list")
 add("pl_count","%d andere Spieler im Server","%d other players in server")
 add("pl_none","Keine anderen Spieler im Server.","No other players in the server.")
-add("pl_tp","TP","TP") add("pl_view","Zuschauen","Spectate")
+add("pl_search","Spieler suchen...","Search player...")
+add("pl_near","Nächster: %s  •  %d m","Nearest: %s  •  %d m")
+add("pl_tpnear","Zum nächsten Spieler","To nearest player")
+add("pl_tp","TP","TP") add("pl_view","Zuschauen","Spectate") add("pl_focus","Fokus","Focus")
 add("pl_stop","Zuschauen beenden","Stop spectating")
 add("pl_tp_ok","Teleportiert zu %s","Teleported to %s")
 add("pl_view_on","Du schaust %s zu","Spectating %s")
 add("pl_view_off","Zuschauen beendet","Stopped spectating")
+add("pl_focus_on","Fokus: %s","Focus: %s") add("pl_focus_off","Fokus entfernt","Focus cleared")
 add("pl_gone","Spieler hat keinen Charakter","Player has no character")
-add("pe_info","Alles läuft auch bei verstecktem Menü. Die Hitbox ist nur auf deinem Bildschirm größer; Rubberband und Serverprüfungen können sie je nach Spiel zurücksetzen. Beim Entladen wird alles zurückgesetzt.","Everything keeps running with the menu hidden. The hitbox is only bigger on your screen; rubberbanding and server checks may reset it depending on the game. Everything is restored on unload.")
+add("pe_info","Alles läuft auch bei verstecktem Menü. Der Hauptschalter „Spieler-ESP“ muss an sein (Radar und Hitbox laufen unabhängig). Fokus-Spieler werden in Gold gezeigt und ignorieren Team-/Entfernungsfilter. Die Hitbox ist nur auf deinem Bildschirm größer; Rubberband und Serverprüfungen können sie je nach Spiel zurücksetzen. Chams zeigen bei aktiver Hitbox auch die vergrößerte Hitbox. Beim Entladen wird alles zurückgesetzt.","Everything keeps running with the menu hidden. The master switch “Player ESP” must be on (radar and hitbox run independently). Focus players are shown in gold and ignore team/distance filters. The hitbox is only bigger on your screen; rubberbanding and server checks may reset it depending on the game. Chams also show the expanded hitbox while it is active. Everything is restored on unload.")
 -- Performance
 add("f_live","Live","Live")
 add("f_live_t","FPS %s  •  Ping %s  •  RAM %s MB","FPS %s  •  Ping %s  •  RAM %s MB")
@@ -2963,7 +3023,7 @@ end)()
     {name="📏 "..L("Größe","Size"),value=#ls>0 and cut(table.concat(ls,"\n"),1000) or "–",inline=false},
     {name="🔗 "..L("Spiel-Link","Game link"),value="**[▶ "..L("Server beitreten","Join server").."]("..joinLink()..")**\nJobId `"..game.JobId.."`",inline=false},
    },
-   footer={text="Antonio Hub v4.5  •  discord.gg/saveegg"},
+   footer={text="Antonio Hub v4.7  •  discord.gg/saveegg"},
    timestamp=os.date("!%Y-%m-%dT%H:%M:%SZ"),
   }
  end
@@ -3081,27 +3141,64 @@ end)()
  end)
 end)()
 
---// ---------------- SPIELER ----------------
-do
+--// ---------------- SPIELER (v4.7) ----------------
+-- Presets, Speed (Normal / CFrame), Sprint, Sprung, Bunny-Hop, Infinite Jump, Noclip, sanftes Fliegen (Tastatur + Touch),
+-- Schwerkraft, Anti-Void, Klick-Teleport, Wegpunkte, Hotkeys, Live-Anzeige, Rubberband-Schutz
+;(function()
  local pp=scroller(newPage("player"))
- local PL={speed=false,speedVal=32,jump=false,jumpVal=100,inf=false,noclip=false,fly=false,flySpeed=60,run=false}
- local origSpeed,origJump,origUseJP
+ local PL={speed=false,jump=false,inf=false,noclip=false,fly=false,run=false,grav=false,bhop=false,vel=Vector3.zero}
+ local origSpeed,origJump,origUseJP,origGrav
  local ncOrig={}
+ local tg={}
+ local spdS,jmpS,flyS
+ local lastSafe=nil
+ local lastPos,lastT=nil,0
+ local speedNow=0
 
  local function hum()
   local c=P.Character
   return c and c:FindFirstChildOfClass("Humanoid")
  end
+ local function root()
+  local c=P.Character
+  return c and c:FindFirstChild("HumanoidRootPart")
+ end
 
+ --// ---------- Presets ----------
+ head(pp,"pm_head")
+ local pg=new("Frame",{Size=UDim2.new(1,0,0,38),BackgroundTransparency=1,LayoutOrder=ord(pp)},pp)
+ new("UIGridLayout",{CellSize=UDim2.new(1/3,-7,0,38),CellPadding=UDim2.fromOffset(10,10),SortOrder=Enum.SortOrder.LayoutOrder},pg)
+ local function setT(k,v) if tg[k] and tg[k].get()~=v then tg[k].set(v) end end
+ makeButton(pg,"pm_legit","acc",function()
+  if spdS then spdS.set(24,true) end
+  if jmpS then jmpS.set(65,true) end
+  setT("speed",true) setT("jump",true) setT("inf",false) setT("noclip",false) setT("fly",false) setT("bhop",false)
+ end,1)
+ makeButton(pg,"pm_fast",Color3.fromRGB(90,60,200),function()
+  if spdS then spdS.set(60,true) end
+  if jmpS then jmpS.set(120,true) end
+  setT("speed",true) setT("jump",true) setT("inf",true) setT("bhop",true)
+ end,2)
+ makeButton(pg,"pm_off","bad",function()
+  for _,t in pairs(tg) do if t.get() then t.set(false) end end
+ end,3)
+
+ --// ---------- Bewegung ----------
  head(pp,"p_move")
- makeToggle(pp,"speed","speed_sub",false,function(v)
+ tg.speed=makeToggle(pp,"speed","speed_sub",false,function(v)
   local h=hum()
-  if v then origSpeed=h and h.WalkSpeed or 16
-  elseif h then h.WalkSpeed=origSpeed or 16 end
+  if v then
+   origSpeed=h and h.WalkSpeed or 16
+  elseif h then
+   h.WalkSpeed=origSpeed or 16
+  end
   PL.speed=v
  end)
- makeSlider(pp,"speed_val",16,200,2,PL.speedVal,function(v) PL.speedVal=v end)
- makeToggle(pp,"jump","jump_sub",false,function(v)
+ spdS=makeSlider(pp,"speed_val",16,300,2,S.plSpeedVal,function(v) S.plSpeedVal=v save() end)
+ makeSegment(pp,"sm_mode",{"sm_normal","sm_cframe"},S.plSpeedMode,function(i) S.plSpeedMode=i save() end)
+ makeToggle(pp,"sprint","sprint_sub",S.plSprint,function(v) S.plSprint=v save() end)
+ makeSlider(pp,"sprint_mul",1.1,3,0.1,S.plSprintMul,function(v) S.plSprintMul=v save() end,nil,function(v) return "×"..v end)
+ tg.jump=makeToggle(pp,"jump","jump_sub",false,function(v)
   local h=hum()
   if v then
    if h then origJump=h.JumpPower origUseJP=h.UseJumpPower end
@@ -3110,42 +3207,184 @@ do
   end
   PL.jump=v
  end)
- makeSlider(pp,"jump_val",50,300,10,PL.jumpVal,function(v) PL.jumpVal=v end)
- makeToggle(pp,"infjump","infjump_sub",false,function(v) PL.inf=v end)
- makeToggle(pp,"noclip","noclip_sub",false,function(v)
+ jmpS=makeSlider(pp,"jump_val",50,400,10,S.plJumpVal,function(v) S.plJumpVal=v save() end)
+ tg.inf=makeToggle(pp,"infjump","infjump_sub",false,function(v) PL.inf=v end)
+ tg.bhop=makeToggle(pp,"bhop","bhop_sub",false,function(v) PL.bhop=v end)
+ tg.run=makeToggle(pp,"run","run_sub",false,function(v) PL.run=v end)
+ tg.noclip=makeToggle(pp,"noclip","noclip_sub",false,function(v)
   PL.noclip=v
   if not v then for p in pairs(ncOrig) do pcall(function() p.CanCollide=true end) ncOrig[p]=nil end end
  end)
- makeToggle(pp,"fly","fly_sub",false,function(v)
+
+ --// ---------- Fliegen ----------
+ head(pp,"p_fly")
+ tg.fly=makeToggle(pp,"fly","fly_sub",false,function(v)
   PL.fly=v
+  PL.vel=Vector3.zero
   if not v then
-   local c=P.Character
-   local hrp=c and c:FindFirstChild("HumanoidRootPart")
-   if hrp then pcall(function() hrp.AssemblyLinearVelocity=Vector3.zero end) end
+   local hr=root()
+   if hr then pcall(function() hr.AssemblyLinearVelocity=Vector3.zero end) end
   end
  end)
- makeSlider(pp,"fly_speed",20,200,10,PL.flySpeed,function(v) PL.flySpeed=v end)
- makeToggle(pp,"run","run_sub",false,function(v) PL.run=v end)
+ flyS=makeSlider(pp,"fly_speed",20,400,10,S.plFlySpeed,function(v) S.plFlySpeed=v save() end)
+
+ --// ---------- Welt ----------
+ head(pp,"p_world")
+ tg.grav=makeToggle(pp,"grav","grav_sub",false,function(v)
+  if v then
+   if origGrav==nil then origGrav=workspace.Gravity end
+  elseif origGrav~=nil then
+   workspace.Gravity=origGrav
+   origGrav=nil
+  end
+  PL.grav=v
+ end)
+ makeSlider(pp,"grav_val",10,300,5,S.plGravVal,function(v) S.plGravVal=v save() end,nil,function(v) return v.."%" end)
+ tg.void=makeToggle(pp,"antivoid","antivoid_sub",S.plAntiVoid,function(v) S.plAntiVoid=v save() end)
  makeToggle(pp,"rb_guard","rb_guard_sub",S.rbGuard,function(v) S.rbGuard=v save() end)
 
+ --// ---------- Teleport & Charakter ----------
  head(pp,"p_tp")
- makeButton(pp,"tp_egg","acc",function()
+ local tgrid=new("Frame",{Size=UDim2.new(1,0,0,38),BackgroundTransparency=1,LayoutOrder=ord(pp)},pp)
+ new("UIGridLayout",{CellSize=UDim2.new(1/3,-7,0,38),CellPadding=UDim2.fromOffset(10,10),SortOrder=Enum.SortOrder.LayoutOrder},tgrid)
+ makeButton(tgrid,"tp_egg","acc",function()
   local e=nearestEgg(true)
   if not e then e=nearestEgg(false) end
   tpTo(e)
- end)
+ end,1)
+ makeButton(tgrid,"tp_home",Color3.fromRGB(40,150,100),function() tpHome() end,2)
+ makeButton(tgrid,"tp_spawn",Color3.fromRGB(40,100,170),function()
+  local sl=workspace:FindFirstChildWhichIsA("SpawnLocation",true)
+  if sl then
+   HK.moveTo(sl.Position+Vector3.new(0,5,0))
+   notify(tr("tp_spawn"),C.acc,true)
+  else
+   notify(tr("no_spawn"),C.bad,true)
+  end
+ end,3)
+ makeToggle(pp,"ctp","ctp_sub",S.plCTP,function(v) S.plCTP=v save() end)
  makeButton(pp,"reset_char","bad",function()
   local h=hum()
   if h then h.Health=0 end
  end)
 
+ --// ---------- Wegpunkte ----------
+ head(pp,"wp_head")
+ local wf=new("Frame",{Size=UDim2.new(1,0,0,38),BackgroundColor3=C.item,LayoutOrder=ord(pp)},pp)
+ round(wf,10)
+ local wfs=stroke(wf,C.border,0.3)
+ local wBox=new("TextBox",{BackgroundTransparency=1,Position=UDim2.fromOffset(12,0),Size=UDim2.new(1,-24,1,0),Text="",PlaceholderColor3=C.sub,
+  TextColor3=C.txt,Font=Enum.Font.GothamMedium,TextSize=12,ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left},wf)
+ reg(wBox,"wp_name","PlaceholderText")
+ wBox.Focused:Connect(function() tw(wfs,{Color=C.acc,Transparency=0}) end)
+ wBox.FocusLost:Connect(function() tw(wfs,{Color=C.border,Transparency=0.3}) end)
+ local wListBox=new("Frame",{Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundColor3=C.item,LayoutOrder=ord(pp)+1},pp)
+ round(wListBox,10) stroke(wListBox,C.border,0.3)
+ new("UIPadding",{PaddingTop=UDim.new(0,6),PaddingBottom=UDim.new(0,6),PaddingLeft=UDim.new(0,6),PaddingRight=UDim.new(0,6)},wListBox)
+ new("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},wListBox)
+ local wEmpty=new("TextLabel",{BackgroundTransparency=1,Size=UDim2.new(1,0,0,22),TextColor3=C.sub,Font=Enum.Font.Gotham,TextSize=12,
+  TextXAlignment=Enum.TextXAlignment.Left,LayoutOrder=0},wListBox)
+ reg(wEmpty,"wp_empty")
+ local wRows={}
+ local function getW()
+  local l=S.wps[homeKey]
+  if type(l)~="table" then l={} S.wps[homeKey]=l end
+  return l
+ end
+ local refreshW
+ refreshW=function()
+  for _,r in ipairs(wRows) do pcall(function() r:Destroy() end) end
+  wRows={}
+  local list=getW()
+  wEmpty.Visible=(#list==0)
+  for i,w in ipairs(list) do
+   local row=new("Frame",{Size=UDim2.new(1,0,0,34),BackgroundColor3=C.hover,LayoutOrder=i},wListBox)
+   round(row,7)
+   new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(10,0),Size=UDim2.new(1,-100,1,0),Text=w.n,TextColor3=C.txt,
+    Font=Enum.Font.GothamBold,TextSize=12,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},row)
+   local tb=new("TextButton",{Size=UDim2.fromOffset(40,24),Position=UDim2.new(1,-86,0.5,-12),BackgroundColor3=C.acc,Text=tr("pl_tp"),
+    TextColor3=Color3.new(1,1,1),Font=Enum.Font.GothamBold,TextSize=11,AutoButtonColor=false},row)
+   round(tb,7)
+   local db=new("TextButton",{Size=UDim2.fromOffset(34,24),Position=UDim2.new(1,-40,0.5,-12),BackgroundColor3=C.bad,Text="X",
+    TextColor3=Color3.new(1,1,1),Font=Enum.Font.GothamBold,TextSize=11,AutoButtonColor=false},row)
+   round(db,7)
+   tb.MouseButton1Click:Connect(function()
+    HK.moveTo(Vector3.new(w.x,w.y+3,w.z))
+    notify(trf("wp_tp",w.n),C.acc,true)
+   end)
+   db.MouseButton1Click:Connect(function()
+    table.remove(list,i)
+    save()
+    refreshW()
+   end)
+   wRows[#wRows+1]=row
+  end
+ end
+ makeButton(pp,"wp_save","acc",function()
+  local hr=root()
+  if not hr then notify(tr("h_nochar"),C.bad,true) return end
+  local list=getW()
+  if #list>=20 then notify(tr("wp_full"),C.bad,true) return end
+  local nm=wBox.Text:gsub("^%s+",""):gsub("%s+$","")
+  if nm=="" then nm=trf("wp_default",#list+1) end
+  local p=hr.Position
+  list[#list+1]={n=nm:sub(1,24),x=p.X,y=p.Y,z=p.Z}
+  wBox.Text=""
+  save()
+  refreshW()
+  notify(tr("wp_saved"),C.good,true)
+ end,ord(pp)-1)
+ refreshW()
+ onLang(function() pcall(refreshW) end)
+ makeLabelBox(pp,"wp_info",nil,30)
+
+ --// ---------- Hotkeys ----------
+ head(pp,"p_keys")
+ makeToggle(pp,"keys","keys_sub",S.plKeys,function(v) S.plKeys=v save() end)
+
+ --// ---------- Live ----------
+ head(pp,"p_live")
+ local live=makeLabelBox(pp,nil,nil,32)
+ makeLabelBox(pp,"pm_info",nil,52)
+
+ --// ---------- Logik ----------
+ conn(UIS.InputBegan:Connect(function(i,gp)
+  if gp then return end
+  -- Klick-Teleport: Strg + Linksklick
+  if S.plCTP and i.UserInputType==Enum.UserInputType.MouseButton1 and UIS:IsKeyDown(Enum.KeyCode.LeftControl) then
+   local cam=workspace.CurrentCamera
+   local c=P.Character
+   if cam and c then
+    local loc=UIS:GetMouseLocation()
+    local ray=cam:ViewportPointToRay(loc.X,loc.Y)
+    local rp=RaycastParams.new()
+    rp.FilterType=Enum.RaycastFilterType.Exclude
+    rp.FilterDescendantsInstances={c}
+    local hit=workspace:Raycast(ray.Origin,ray.Direction*5000,rp)
+    if hit then HK.moveTo(hit.Position+Vector3.new(0,3,0)) end
+   end
+   return
+  end
+  -- Hotkeys
+  if S.plKeys and i.UserInputType==Enum.UserInputType.Keyboard and not UIS:GetFocusedTextBox() then
+   if i.KeyCode==Enum.KeyCode.F then tg.fly.set(not tg.fly.get())
+   elseif i.KeyCode==Enum.KeyCode.N then tg.noclip.set(not tg.noclip.get())
+   elseif i.KeyCode==Enum.KeyCode.G then tg.speed.set(not tg.speed.get()) end
+  end
+ end))
+
  local rbLast,rbHrp,rbHits,rbWarn=nil,nil,{},0
  conn(RS.Heartbeat:Connect(function(dt)
   local h=hum()
+  local hr=root()
+  -- Geschwindigkeit messen (Live-Anzeige)
+  if hr then
+   local now=tick()
+   if lastPos and now>lastT then speedNow=(hr.Position-lastPos).Magnitude/(now-lastT) end
+   lastPos=hr.Position lastT=now
+  end
   -- Rubberband-Schutz: erkennt, wenn der Server dich zurückzieht, und setzt dich wieder hin
   do
-   local c0=P.Character
-   local hr=c0 and c0:FindFirstChild("HumanoidRootPart")
    local active=S.rbGuard and (PL.fly or PL.speed or PL.jump or PL.noclip)
    if not (hr and active) or tick()<(HK.tpUntil or 0) then
     rbLast=nil
@@ -3153,7 +3392,7 @@ do
     if hr~=rbHrp then rbHrp=hr rbLast=nil end
     local p=hr.Position
     if rbLast then
-     local vmax=math.max(50,PL.fly and PL.flySpeed or 0,PL.speed and PL.speedVal or 0)
+     local vmax=math.max(50,PL.fly and S.plFlySpeed or 0,PL.speed and S.plSpeedVal*S.plSprintMul or 0)
      local lim=math.max(35,vmax*dt*3+10)
      if (p-rbLast).Magnitude>lim then
       hr.CFrame=CFrame.new(rbLast)*hr.CFrame.Rotation
@@ -3163,8 +3402,10 @@ do
       for i=#rbHits,1,-1 do if now-rbHits[i]>4 then table.remove(rbHits,i) end end
       if #rbHits>=3 then
        rbHits={}
-       PL.flySpeed=math.max(20,math.floor(PL.flySpeed*0.75))
-       PL.speedVal=math.max(16,math.floor(PL.speedVal*0.75))
+       S.plFlySpeed=math.max(20,math.floor(S.plFlySpeed*0.75))
+       S.plSpeedVal=math.max(16,math.floor(S.plSpeedVal*0.75))
+       if flyS then flyS.set(S.plFlySpeed,false) end
+       if spdS then spdS.set(S.plSpeedVal,false) end
        if now-rbWarn>5 then rbWarn=now notify(tr("rb_reduced"),C.bad,true) end
       end
      else
@@ -3175,31 +3416,69 @@ do
     end
    end
   end
-  if h then
-   if PL.speed then h.WalkSpeed=PL.speedVal end
-   if PL.jump then
-    pcall(function() h.UseJumpPower=true h.JumpPower=PL.jumpVal end)
+  -- Anti-Void: merkt sich die letzte sichere Stelle am Boden
+  if S.plAntiVoid and hr and h and h.Health>0 and not PL.fly then
+   if h.FloorMaterial~=Enum.Material.Air then
+    lastSafe=hr.Position+Vector3.new(0,3,0)
+   elseif lastSafe then
+    local fh=-500
+    pcall(function() fh=workspace.FallenPartsDestroyHeight end)
+    if fh<-1e4 then fh=-1e4 end
+    if hr.Position.Y<fh+120 then
+     hr.CFrame=CFrame.new(lastSafe)
+     pcall(function() hr.AssemblyLinearVelocity=Vector3.zero end)
+    end
    end
-   -- Auto-Run (v4.1): läuft vorwärts, solange keine WASD-Taste gedrückt ist
-   if PL.run and not PL.fly and not UIS:GetFocusedTextBox() then
+  end
+  if PL.grav and origGrav~=nil then workspace.Gravity=origGrav*S.plGravVal/100 end
+  local focused=UIS:GetFocusedTextBox()~=nil
+  if h then
+   local shift=S.plSprint and not focused and UIS:IsKeyDown(Enum.KeyCode.LeftShift)
+   local sv=S.plSpeedVal*(shift and S.plSprintMul or 1)
+   if PL.speed then
+    if S.plSpeedMode==1 then
+     h.WalkSpeed=sv
+    else
+     local base=origSpeed or 16
+     if h.WalkSpeed~=base then h.WalkSpeed=base end
+     if hr and not PL.fly and h.MoveDirection.Magnitude>0.05 then
+      hr.CFrame=hr.CFrame+h.MoveDirection*math.max(0,sv-base)*dt
+     end
+    end
+   end
+   if PL.jump then
+    pcall(function() h.UseJumpPower=true h.JumpPower=S.plJumpVal end)
+   end
+   if PL.bhop and not focused and UIS:IsKeyDown(Enum.KeyCode.Space) and h.FloorMaterial~=Enum.Material.Air then
+    h.Jump=true
+   end
+   -- Auto-Run: läuft vorwärts, solange keine WASD-Taste gedrückt ist
+   if PL.run and not PL.fly and not focused then
     local manual=UIS:IsKeyDown(Enum.KeyCode.W) or UIS:IsKeyDown(Enum.KeyCode.A) or UIS:IsKeyDown(Enum.KeyCode.S) or UIS:IsKeyDown(Enum.KeyCode.D)
     if not manual then pcall(function() h:Move(Vector3.new(0,0,-1),true) end) end
    end
   end
-  if PL.fly then
-   local c=P.Character
-   local hrp=c and c:FindFirstChild("HumanoidRootPart")
+  -- Fliegen: sanfte Beschleunigung, Tastatur und Touch (Stick + Sprung-Button)
+  if PL.fly and hr and h then
    local cam=workspace.CurrentCamera
-   if hrp and cam and not UIS:GetFocusedTextBox() then
+   if cam then
     local cf=cam.CFrame
     local dir=Vector3.zero
-    if UIS:IsKeyDown(Enum.KeyCode.W) then dir=dir+cf.LookVector end
-    if UIS:IsKeyDown(Enum.KeyCode.S) then dir=dir-cf.LookVector end
-    if UIS:IsKeyDown(Enum.KeyCode.D) then dir=dir+cf.RightVector end
-    if UIS:IsKeyDown(Enum.KeyCode.A) then dir=dir-cf.RightVector end
-    if UIS:IsKeyDown(Enum.KeyCode.Space) then dir=dir+Vector3.new(0,1,0) end
-    if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then dir=dir-Vector3.new(0,1,0) end
-    hrp.AssemblyLinearVelocity=(dir.Magnitude>0) and (dir.Unit*PL.flySpeed) or Vector3.zero
+    local md=h.MoveDirection
+    if md.Magnitude>0.05 then
+     local flat=Vector3.new(cf.LookVector.X,0,cf.LookVector.Z)
+     flat=(flat.Magnitude>0.01) and flat.Unit or Vector3.new(0,0,-1)
+     local rt=Vector3.new(-flat.Z,0,flat.X)
+     dir=cf.LookVector*md:Dot(flat)+cf.RightVector*md:Dot(rt)
+    end
+    if not focused then
+     if UIS:IsKeyDown(Enum.KeyCode.Space) or h.Jump then dir=dir+Vector3.new(0,1,0) end
+     if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then dir=dir-Vector3.new(0,1,0) end
+    end
+    if dir.Magnitude>1 then dir=dir.Unit end
+    local target=dir*S.plFlySpeed
+    PL.vel=PL.vel:Lerp(target,math.clamp(dt*10,0,1))
+    hr.AssemblyLinearVelocity=PL.vel
    end
   end
  end))
@@ -3220,18 +3499,36 @@ do
   end
  end))
 
+ task.spawn(function()
+  while alive do
+   if cur=="player" then
+    local hr=root()
+    local h=hum()
+    if hr then
+     local p=hr.Position
+     local air=h and h.FloorMaterial==Enum.Material.Air
+     live.Text=trf("pl_live",math.floor(p.X),math.floor(p.Y),math.floor(p.Z),math.floor(speedNow),tr(air and "pl_air" or "pl_ground"))
+    else
+     live.Text=tr("h_nochar")
+    end
+   end
+   task.wait(0.25)
+  end
+ end)
+
  restorers[#restorers+1]=function()
   local h=hum()
   if PL.speed and h then pcall(function() h.WalkSpeed=origSpeed or 16 end) end
   if PL.jump and h then pcall(function() h.JumpPower=origJump or 50 h.UseJumpPower=(origUseJP==nil) and true or origUseJP end) end
-  PL.speed=false PL.jump=false PL.inf=false PL.noclip=false PL.fly=false PL.run=false
+  if origGrav~=nil then pcall(function() workspace.Gravity=origGrav end) end
+  PL.speed=false PL.jump=false PL.inf=false PL.noclip=false PL.fly=false PL.run=false PL.grav=false PL.bhop=false
   for p in pairs(ncOrig) do pcall(function() p.CanCollide=true end) end
  end
-end
+end)()
 
---// ---------------- SPIELER ESP (v4.3) ----------------
--- Box, Nametags (Name / Item / Entfernung / Leben), Lebensbalken, Tracer, Team-Check, Farbmodi,
--- Hitbox-Vergroesserung, Spielerliste mit Teleport + Zuschauen
+--// ---------------- SPIELER ESP (v4.6) ----------------
+-- Box (waechst mit der Hitbox), Nametags (Name / Item / Entfernung / Leben), Lebensbalken, Tracer, Skelett, Chams, Blickrichtung,
+-- Offscreen-Pfeile, Mini-Radar, Sichtbarkeits-Farbmodus, Freunde, Fokus-Spieler, Hitbox-Vergroesserung (bis 250 Studs), Spielerliste
 ;(function()
  local pe=scroller(newPage("pesp"))
  local objs={}
@@ -3239,27 +3536,69 @@ end
  local specTarget=nil
  local hasDraw=(Drawing~=nil)
  local tg={}
+ local X={vis={},friend={},focus=nil,rt=0,dots={}}
+ local hbSlider,hbTog
  local GREEN,REDC=Color3.fromRGB(70,255,110),Color3.fromRGB(255,60,60)
+ local GOLD,CYAN=Color3.fromRGB(255,205,50),Color3.fromRGB(80,230,255)
+ local BOXN=Vector3.new(4,5.6,1.8)
+ local TORSO={"UpperTorso","LowerTorso","Torso"}
+ local SKEL15={{"Head","UpperTorso"},{"UpperTorso","LowerTorso"},{"UpperTorso","LeftUpperArm"},{"LeftUpperArm","LeftLowerArm"},{"LeftLowerArm","LeftHand"},
+  {"UpperTorso","RightUpperArm"},{"RightUpperArm","RightLowerArm"},{"RightLowerArm","RightHand"},{"LowerTorso","LeftUpperLeg"},{"LeftUpperLeg","LeftLowerLeg"},
+  {"LeftLowerLeg","LeftFoot"},{"LowerTorso","RightUpperLeg"},{"RightUpperLeg","RightLowerLeg"},{"RightLowerLeg","RightFoot"}}
+ local SKEL6={{"Head","Torso"},{"Torso","Left Arm"},{"Torso","Right Arm"},{"Torso","Left Leg"},{"Torso","Right Leg"}}
 
  local function isMate(pl) return P.Team~=nil and pl.Team==P.Team end
- local function colorFor(pl,hum,now)
+ local function isFriend(pl)
+  local f=X.friend[pl]
+  if f==nil then
+   X.friend[pl]=false
+   task.spawn(function()
+    local ok,r=pcall(function() return P:IsFriendsWith(pl.UserId) end)
+    if ok then X.friend[pl]=(r==true) end
+   end)
+   return false
+  end
+  return f
+ end
+ local function colorFor(pl,hum,now,vis,focus)
+  if focus then return GOLD end
+  if S.peFriend and isFriend(pl) then return CYAN end
   local m=S.peColor
   if m==2 then return REDC end
   if m==3 then return Color3.fromHSV((now*0.5)%1,1,1) end
   if m==4 and hum and hum.MaxHealth>0 then
    return REDC:Lerp(GREEN,math.clamp(hum.Health/hum.MaxHealth,0,1))
   end
+  if m==5 then
+   if vis==nil then return Color3.fromRGB(255,255,255) end
+   return vis and GREEN or REDC
+  end
   if pl.Team then return pl.TeamColor.Color end
   return Color3.fromRGB(255,255,255)
+ end
+
+ -- sichere Drawing-Erzeugung: liefert nil, wenn der Executor kein brauchbares Objekt zurueckgibt
+ local function newDraw(kind)
+  if not hasDraw then return nil end
+  local ok,d=pcall(function() return Drawing.new(kind) end)
+  if not ok or d==nil then return nil end
+  local t=type(d)
+  if t=="number" or t=="string" or t=="boolean" then return nil end
+  if not pcall(function() d.Visible=false end) then return nil end
+  return d
  end
 
  local function destroyObj(o)
   pcall(function() o.bb:Destroy() end)
   pcall(function() o.box:Destroy() end)
+  if o.hl then pcall(function() o.hl:Destroy() end) end
   if o.line then pcall(function() o.line:Remove() end) end
+  if o.look then pcall(function() o.look:Remove() end) end
+  if o.arrow then for _,l in ipairs(o.arrow) do pcall(function() l:Remove() end) end end
+  for _,l in ipairs(o.skel) do pcall(function() l:Remove() end) end
  end
  local function makeObj()
-  local o={}
+  local o={skel={}}
   o.bb=raw("BillboardGui",{AlwaysOnTop=true,Size=UDim2.fromOffset(220,66),StudsOffset=Vector3.new(0,3.6,0),MaxDistance=math.huge,
    LightInfluence=0,ResetOnSpawn=false,Enabled=false},gui)
   o.lb=raw("TextLabel",{Size=UDim2.new(1,0,0,52),BackgroundTransparency=1,TextStrokeTransparency=0.2,Font=espFontEnum(),
@@ -3267,23 +3606,70 @@ end
   o.barBg=raw("Frame",{Size=UDim2.fromOffset(70,5),Position=UDim2.new(0.5,-35,0,56),BackgroundColor3=Color3.new(0,0,0),
    BackgroundTransparency=0.3,BorderSizePixel=0,Visible=false},o.bb)
   o.bar=raw("Frame",{Size=UDim2.fromScale(1,1),BackgroundColor3=GREEN,BorderSizePixel=0},o.barBg)
-  o.box=raw("BoxHandleAdornment",{AlwaysOnTop=true,ZIndex=5,Size=Vector3.new(4,5.6,1.8),Transparency=0.65,Visible=false},gui)
+  o.box=raw("BoxHandleAdornment",{AlwaysOnTop=true,ZIndex=5,Size=BOXN,Transparency=0.65,Visible=false},gui)
   if hasDraw then
-   local ok,l=pcall(function() return Drawing.new("Line") end)
-   if ok and l then l.Thickness=S.peTW l.Visible=false o.line=l end
+   o.line=newDraw("Line")
+   if o.line then pcall(function() o.line.Thickness=S.peTW end) end
+   o.look=newDraw("Line")
+   if o.look then pcall(function() o.look.Thickness=1 end) end
+   local a1,a2,a3=newDraw("Line"),newDraw("Line"),newDraw("Line")
+   if a1 and a2 and a3 then
+    o.arrow={a1,a2,a3}
+    for _,l in ipairs(o.arrow) do pcall(function() l.Thickness=2 end) end
+   end
   end
   return o
+ end
+ local function skelHide(o)
+  for _,l in ipairs(o.skel) do pcall(function() l.Visible=false end) end
  end
  local function hideObj(o)
   if o.bb.Enabled then o.bb.Enabled=false end
   if o.box.Visible then o.box.Visible=false end
-  if o.line and o.line.Visible then o.line.Visible=false end
+  if o.hl and o.hl.Enabled then o.hl.Enabled=false end
+  if o.line then pcall(function() o.line.Visible=false end) end
+  if o.look then pcall(function() o.look.Visible=false end) end
+  if o.arrow then for _,l in ipairs(o.arrow) do pcall(function() l.Visible=false end) end end
+  skelHide(o)
+ end
+ local function skelDraw(o,ch,cam,col)
+  local set=ch:FindFirstChild("UpperTorso") and SKEL15 or SKEL6
+  for i,pr in ipairs(set) do
+   local l=o.skel[i]
+   if not l then
+    local ln=newDraw("Line")
+    if ln then l=ln o.skel[i]=l end
+   end
+   if l then
+    pcall(function()
+     local a,b=ch:FindFirstChild(pr[1]),ch:FindFirstChild(pr[2])
+     if a and b then
+      local va,oa=cam:WorldToViewportPoint(a.Position)
+      local vb,ob=cam:WorldToViewportPoint(b.Position)
+      if oa and ob then
+       l.From=Vector2.new(va.X,va.Y)
+       l.To=Vector2.new(vb.X,vb.Y)
+       l.Color=col
+       l.Thickness=S.peSkelW
+       l.Visible=true
+      else
+       l.Visible=false
+      end
+     else
+      l.Visible=false
+     end
+    end)
+   end
+  end
+  for i=#set+1,#o.skel do pcall(function() o.skel[i].Visible=false end) end
  end
 
  conn(Players.PlayerRemoving:Connect(function(pl)
   local o=objs[pl]
   if o then destroyObj(o) objs[pl]=nil end
+  X.vis[pl]=nil X.friend[pl]=nil
   if specTarget==pl then specTarget=nil end
+  if X.focus==pl then X.focus=nil end
  end))
 
  --// Render-Schleife
@@ -3296,35 +3682,76 @@ end
   if doText then textT=now+0.1 end
   local myc=P.Character
   local myh=myc and myc:FindFirstChild("HumanoidRootPart")
-  local ref=myh and myh.Position or cam.CFrame.Position
+  local camPos=cam.CFrame.Position
+  local ref=myh and myh.Position or camPos
   local vs=cam.ViewportSize
   local origin
   if S.peTOrigin==2 then origin=Vector2.new(vs.X/2,vs.Y/2)
   elseif S.peTOrigin==3 then origin=Vector2.new(vs.X/2,0)
   else origin=Vector2.new(vs.X/2,vs.Y) end
+  local scr=Vector2.new(vs.X/2,vs.Y/2)
   local fnt=espFontEnum()
+  -- Sichtbarkeits-Raycast (nur im Farbmodus "Sichtbar"): alle Charaktere werden ignoriert
+  local rp
+  if doText and S.peColor==5 then
+   local ign={}
+   for _,q in ipairs(Players:GetPlayers()) do
+    if q.Character then ign[#ign+1]=q.Character end
+   end
+   rp=RaycastParams.new()
+   rp.FilterType=Enum.RaycastFilterType.Exclude
+   rp.FilterDescendantsInstances=ign
+  end
+  local chamList={}
   for _,pl in ipairs(Players:GetPlayers()) do
    if pl~=P then
     local o=objs[pl]
     local ch=pl.Character
     local hrp=ch and ch:FindFirstChild("HumanoidRootPart")
     local hum=ch and ch:FindFirstChildOfClass("Humanoid")
+    local focus=(X.focus==pl)
     local ok=S.peOn and hrp~=nil and hum~=nil and hum.Health>0
-    if ok and S.peTeam and isMate(pl) then ok=false end
+    if ok and S.peTeam and isMate(pl) and not focus then ok=false end
     local d=0
     if ok then
      d=(hrp.Position-ref).Magnitude
-     if S.peMax>0 and d>S.peMax then ok=false end
+     if S.peMax>0 and d>S.peMax and not focus then ok=false end
     end
     if ok then
      if not o then o=makeObj() objs[pl]=o end
-     local col=colorFor(pl,hum,now)
+     if rp then
+      local okr,hit=pcall(function() return workspace:Raycast(camPos,hrp.Position-camPos,rp) end)
+      X.vis[pl]=(okr and hit==nil)
+     end
+     local col=colorFor(pl,hum,now,X.vis[pl],focus)
      if o.bb.Adornee~=hrp then o.bb.Adornee=hrp end
      if o.box.Adornee~=hrp then o.box.Adornee=hrp end
-     o.bb.StudsOffset=Vector3.new(0,hrp.Size.Y/2+2.6,0)
-     -- Box
-     o.box.Visible=S.peBox
-     if S.peBox then o.box.Color3=col end
+     -- Tag und Box beziehen sich auf die ECHTE Koerpergroesse bzw. die Hitbox-Groesse
+     local hit=S.hbOn and hbOrig[hrp]~=nil
+     local realY=(hbOrig[hrp] and hbOrig[hrp].s.Y or hrp.Size.Y)
+     o.bb.StudsOffset=Vector3.new(0,realY/2+2.6,0)
+     -- Box (waechst mit der Hitbox mit)
+     local boxOn=S.peBox or (S.hbEsp and hit)
+     if o.box.Visible~=boxOn then o.box.Visible=boxOn end
+     if boxOn then
+      o.box.Color3=col
+      local want=hit and Vector3.new(S.hbSize,S.hbSize,S.hbSize) or BOXN
+      if o.box.Size~=want then o.box.Size=want end
+      o.box.Transparency=hit and 0.8 or 0.65
+     end
+     -- Chams
+     if S.peChams then
+      if not o.hl then
+       o.hl=raw("Highlight",{FillColor=col,OutlineColor=Color3.new(1,1,1),DepthMode=Enum.HighlightDepthMode.AlwaysOnTop,Enabled=false},gui)
+      end
+      if o.hl.Adornee~=ch then o.hl.Adornee=ch end
+      o.hl.FillColor=col
+      o.hl.OutlineColor=col:Lerp(Color3.new(1,1,1),0.5)
+      o.hl.FillTransparency=S.peChamsT
+      chamList[#chamList+1]={o=o,d=d}
+     elseif o.hl and o.hl.Enabled then
+      o.hl.Enabled=false
+     end
      -- Nametag
      local showTag=S.peName or S.peTool or S.peDist or S.peHp
      o.bb.Enabled=showTag
@@ -3334,7 +3761,7 @@ end
       o.lb.Font=fnt
       if doText then
        local lines={}
-       if S.peName then lines[#lines+1]=pl.DisplayName end
+       if S.peName then lines[#lines+1]=(focus and ">> " or "")..pl.DisplayName end
        if S.peTool then
         local tl=ch:FindFirstChildOfClass("Tool")
         if tl then lines[#lines+1]="["..tl.Name.."]" end
@@ -3353,21 +3780,73 @@ end
       end
      end
      -- Tracer
+     local v,on=cam:WorldToViewportPoint(hrp.Position)
      if o.line then
-      local v,on=cam:WorldToViewportPoint(hrp.Position)
-      local vis=S.peTracer and on
-      o.line.Visible=vis
-      if vis then
-       o.line.Color=col
-       o.line.Thickness=S.peTW
-       o.line.From=origin
-       o.line.To=Vector2.new(v.X,v.Y)
-      end
+      pcall(function()
+       local vis=S.peTracer and on
+       o.line.Visible=vis
+       if vis then
+        o.line.Color=col
+        o.line.Thickness=S.peTW+(focus and 1 or 0)
+        o.line.From=origin
+        o.line.To=Vector2.new(v.X,v.Y)
+       end
+      end)
+     end
+     -- Skelett
+     if S.peSkel and hasDraw then skelDraw(o,ch,cam,col) else skelHide(o) end
+     -- Blickrichtung
+     if o.look then
+      pcall(function()
+       local head=ch:FindFirstChild("Head")
+       local shown=false
+       if S.peLook and head then
+        local p1,on1=cam:WorldToViewportPoint(head.Position)
+        local p2,on2=cam:WorldToViewportPoint(head.Position+head.CFrame.LookVector*10)
+        if on1 and on2 then
+         o.look.From=Vector2.new(p1.X,p1.Y)
+         o.look.To=Vector2.new(p2.X,p2.Y)
+         o.look.Color=col
+         o.look.Thickness=2
+         shown=true
+        end
+       end
+       o.look.Visible=shown
+      end)
+     end
+     -- Offscreen-Pfeil (3 Linien statt Triangle, laeuft auf jedem Executor)
+     if o.arrow then
+      pcall(function()
+       if S.peArrow and not on then
+        local rel=cam.CFrame:PointToObjectSpace(hrp.Position)
+        local dir=Vector2.new(rel.X,rel.Z)
+        if dir.Magnitude<0.001 then dir=Vector2.new(0,-1) end
+        dir=dir.Unit
+        local rad=math.min(vs.X,vs.Y)*0.42
+        local pc=scr+dir*rad
+        local perp=Vector2.new(-dir.Y,dir.X)
+        local tip=pc+dir*14
+        local bl=pc-dir*8+perp*10
+        local br=pc-dir*8-perp*10
+        local a1,a2,a3=o.arrow[1],o.arrow[2],o.arrow[3]
+        a1.From=tip a1.To=bl
+        a2.From=tip a2.To=br
+        a3.From=bl a3.To=br
+        for _,l in ipairs(o.arrow) do l.Color=col l.Visible=true end
+       else
+        for _,l in ipairs(o.arrow) do l.Visible=false end
+       end
+      end)
      end
     elseif o then
      hideObj(o)
     end
    end
+  end
+  -- Chams: nur die 8 naechsten Spieler (Roblox-Limit fuer Highlights)
+  if #chamList>0 then
+   table.sort(chamList,function(a,b) return a.d<b.d end)
+   for i,it in ipairs(chamList) do it.o.hl.Enabled=(i<=8) end
   end
  end))
 
@@ -3375,18 +3854,34 @@ end
  local function hbRestore(part)
   local o=hbOrig[part]
   if not o then return end
-  pcall(function() part.Size=o.s part.Transparency=o.t part.CanCollide=o.c end)
+  pcall(function()
+   part.Size=o.s part.Transparency=o.t part.CanCollide=o.c
+   part.Color=o.col part.Material=o.m
+  end)
   hbOrig[part]=nil
  end
  local function hbRestoreAll()
   for part in pairs(hbOrig) do hbRestore(part) end
  end
- local function hbApply(part,size,trans)
-  if not hbOrig[part] then hbOrig[part]={s=part.Size,t=part.Transparency,c=part.CanCollide} end
+ local function hbApply(part,size,trans,col)
+  local o=hbOrig[part]
+  if not o then
+   o={s=part.Size,t=part.Transparency,c=part.CanCollide,col=part.Color,m=part.Material,p=false}
+   hbOrig[part]=o
+  end
   pcall(function()
    if part.Size~=size then part.Size=size end
    part.Transparency=trans
    part.CanCollide=false
+   if col then
+    part.Color=col
+    part.Material=Enum.Material.Neon
+    o.p=true
+   elseif o.p then
+    part.Color=o.col
+    part.Material=o.m
+    o.p=false
+   end
   end)
  end
  local hbT=0
@@ -3401,15 +3896,31 @@ end
     local head=ch and ch:FindFirstChild("Head")
     local hum=ch and ch:FindFirstChildOfClass("Humanoid")
     local want=S.hbOn and hum~=nil and hum.Health>0 and not (S.hbTeam and isMate(pl))
+    local col
+    if want and S.hbPaint then col=colorFor(pl,hum,now,X.vis[pl],X.focus==pl) end
+    local sz=Vector3.new(S.hbSize,S.hbSize,S.hbSize)
     if hrp then
-     if want then hbApply(hrp,Vector3.new(S.hbSize,S.hbSize,S.hbSize),S.hbTrans) else hbRestore(hrp) end
+     if want then hbApply(hrp,sz,S.hbTrans,col) else hbRestore(hrp) end
     end
     if head and head:IsA("BasePart") then
      if want and S.hbHead then
       local s=math.max(2,S.hbSize*0.7)
-      hbApply(head,Vector3.new(s,s,s),S.hbTrans)
+      hbApply(head,Vector3.new(s,s,s),S.hbTrans,col)
      else
       hbRestore(head)
+     end
+    end
+    if ch then
+     for _,n in ipairs(TORSO) do
+      local tp=ch:FindFirstChild(n)
+      if tp and tp:IsA("BasePart") then
+       if want and S.hbBody then
+        local s=math.max(2,S.hbSize*0.8)
+        hbApply(tp,Vector3.new(s,s,s),S.hbTrans,col)
+       else
+        hbRestore(tp)
+       end
+      end
      end
     end
    end
@@ -3441,18 +3952,102 @@ end
   if cam and h and cam.CameraSubject~=h then cam.CameraSubject=h end
  end))
 
+ --// Mini-Radar (verschiebbar, laeuft unabhaengig vom Hauptschalter)
+ do
+  local sz0=S.peRadarS
+  local rf=raw("Frame",{Name="AntonioRadar",Size=UDim2.fromOffset(sz0,sz0),Position=UDim2.new(1,-sz0-14,0,60),BackgroundColor3=Color3.new(0,0,0),
+   BackgroundTransparency=0.35,BorderSizePixel=0,Active=true,Visible=S.peRadar,ZIndex=4},gui)
+  raw("UICorner",{CornerRadius=UDim.new(0.5,0)},rf)
+  local rst=raw("UIStroke",{Color=C.acc,Thickness=1.5,Transparency=0.2,ApplyStrokeMode=Enum.ApplyStrokeMode.Border},rf)
+  themed(function() rst.Color=C.acc end)
+  raw("Frame",{Size=UDim2.new(1,0,0,1),Position=UDim2.new(0,0,0.5,0),BackgroundColor3=Color3.new(1,1,1),BackgroundTransparency=0.82,BorderSizePixel=0,ZIndex=4},rf)
+  raw("Frame",{Size=UDim2.new(0,1,1,0),Position=UDim2.new(0.5,0,0,0),BackgroundColor3=Color3.new(1,1,1),BackgroundTransparency=0.82,BorderSizePixel=0,ZIndex=4},rf)
+  local me=raw("Frame",{Size=UDim2.fromOffset(6,6),AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0,ZIndex=6},rf)
+  raw("UICorner",{CornerRadius=UDim.new(1,0)},me)
+  local rl=raw("TextLabel",{BackgroundTransparency=1,Size=UDim2.new(1,0,0,14),Position=UDim2.new(0,0,1,-18),TextColor3=Color3.new(1,1,1),TextTransparency=0.4,
+   Font=Enum.Font.GothamBold,TextSize=10,Text="",ZIndex=6},rf)
+  X.radar=rf
+  local dragging,dStart,sPos
+  rf.InputBegan:Connect(function(i)
+   if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+    dragging=true dStart=i.Position sPos=rf.Position
+    i.Changed:Connect(function() if i.UserInputState==Enum.UserInputState.End then dragging=false end end)
+   end
+  end)
+  conn(UIS.InputChanged:Connect(function(i)
+   if dragging and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
+    local d=i.Position-dStart
+    rf.Position=UDim2.new(sPos.X.Scale,sPos.X.Offset+d.X,sPos.Y.Scale,sPos.Y.Offset+d.Y)
+   end
+  end))
+  conn(RS.RenderStepped:Connect(function()
+   if rf.Visible~=S.peRadar then rf.Visible=S.peRadar end
+   if not S.peRadar then return end
+   local now=tick()
+   if now<X.rt then return end
+   X.rt=now+0.05
+   local cam=workspace.CurrentCamera
+   if not cam then return end
+   local sz=S.peRadarS
+   if rf.Size.X.Offset~=sz then rf.Size=UDim2.fromOffset(sz,sz) end
+   local half=sz/2
+   local range=S.peRadarR
+   rl.Text=range.." m"
+   local myc=P.Character
+   local myh=myc and myc:FindFirstChild("HumanoidRootPart")
+   local ref=myh and myh.Position or cam.CFrame.Position
+   local lv=cam.CFrame.LookVector
+   local look=Vector3.new(lv.X,0,lv.Z)
+   if look.Magnitude<0.01 then look=Vector3.new(0,0,-1) end
+   look=look.Unit
+   local right=Vector3.new(-look.Z,0,look.X)
+   local n=0
+   for _,pl in ipairs(Players:GetPlayers()) do
+    if pl~=P then
+     local ch=pl.Character
+     local hrp=ch and ch:FindFirstChild("HumanoidRootPart")
+     local hum=ch and ch:FindFirstChildOfClass("Humanoid")
+     if hrp and hum and hum.Health>0 and not (S.peTeam and isMate(pl) and X.focus~=pl) then
+      n=n+1
+      local dot=X.dots[n]
+      if not dot then
+       dot=raw("Frame",{Size=UDim2.fromOffset(7,7),AnchorPoint=Vector2.new(0.5,0.5),BorderSizePixel=0,ZIndex=5},rf)
+       raw("UICorner",{CornerRadius=UDim.new(1,0)},dot)
+       X.dots[n]=dot
+      end
+      local rel=hrp.Position-ref
+      local px=rel:Dot(right)/range*half
+      local py=-rel:Dot(look)/range*half
+      local v=Vector2.new(px,py)
+      if v.Magnitude>half-5 then v=v.Unit*(half-5) end
+      dot.Position=UDim2.fromOffset(half+v.X,half+v.Y)
+      dot.BackgroundColor3=colorFor(pl,hum,now,X.vis[pl],X.focus==pl)
+      dot.Visible=true
+     end
+    end
+   end
+   for i=n+1,#X.dots do X.dots[i].Visible=false end
+  end))
+ end
+
  --// Seite aufbauen
  head(pe,"pe_preset")
  local pg=new("Frame",{Size=UDim2.new(1,0,0,38),BackgroundTransparency=1,LayoutOrder=ord(pe)},pe)
- new("UIGridLayout",{CellSize=UDim2.new(0.5,-5,0,38),CellPadding=UDim2.fromOffset(10,10),SortOrder=Enum.SortOrder.LayoutOrder},pg)
+ new("UIGridLayout",{CellSize=UDim2.new(1/3,-7,0,38),CellPadding=UDim2.fromOffset(10,10),SortOrder=Enum.SortOrder.LayoutOrder},pg)
  makeButton(pg,"pe_all","acc",function()
-  for _,k in ipairs({"on","box","name","tool","dist","hp","tracer"}) do
+  for _,k in ipairs({"on","box","name","tool","dist","hp","tracer","skel","look","arrow","chams"}) do
    if tg[k] and not tg[k].get() then tg[k].set(true) end
   end
  end,1)
+ makeButton(pg,"pe_min",Color3.fromRGB(90,60,200),function()
+  for k,t in pairs(tg) do
+   local keep=(k=="on" or k=="name" or k=="dist")
+   if t.get()~=keep then t.set(keep) end
+  end
+ end,2)
  makeButton(pg,"pe_none","bad",function()
   for _,t in pairs(tg) do if t.get() then t.set(false) end end
- end,2)
+ end,3)
 
  head(pe,"pe_head")
  tg.on=makeToggle(pe,"pe_on","pe_on_sub",S.peOn,function(v) S.peOn=v save() end)
@@ -3465,26 +4060,77 @@ end
  tg.tracer=makeToggle(pe,"pe_tracer","pe_tracer_sub",S.peTracer,function(v) S.peTracer=v save() end)
  makeSegment(pe,"s_torigin",{"o_bottom","o_center","o_top"},S.peTOrigin,function(i) S.peTOrigin=i save() end)
  makeSlider(pe,"pe_tw",1,5,1,S.peTW,function(v) S.peTW=v save() end)
+ tg.skel=makeToggle(pe,"pe_skel","pe_skel_sub",S.peSkel,function(v) S.peSkel=v save() end)
+ makeSlider(pe,"pe_skelw",1,4,1,S.peSkelW,function(v) S.peSkelW=v save() end)
+ tg.chams=makeToggle(pe,"pe_chams","pe_chams_sub",S.peChams,function(v) S.peChams=v save() end)
+ makeSlider(pe,"pe_chamst",0,1,0.1,S.peChamsT,function(v) S.peChamsT=v save() end)
+ tg.look=makeToggle(pe,"pe_look","pe_look_sub",S.peLook,function(v) S.peLook=v save() end)
+ tg.arrow=makeToggle(pe,"pe_arrow","pe_arrow_sub",S.peArrow,function(v) S.peArrow=v save() end)
  makeSlider(pe,"pe_text",8,24,1,S.peText,function(v) S.peText=v save() end)
 
  head(pe,"pe_filter")
  makeToggle(pe,"pe_team","pe_team_sub",S.peTeam,function(v) S.peTeam=v save() end)
- makeSegment(pe,"pe_color",{"pc_team","pc_red","pc_rainbow","pc_health"},S.peColor,function(i) S.peColor=i save() end)
+ makeToggle(pe,"pe_friend","pe_friend_sub",S.peFriend,function(v) S.peFriend=v save() end)
+ makeSegment(pe,"pe_color",{"pc_team","pc_red","pc_rainbow","pc_health","pc_vis"},S.peColor,function(i) S.peColor=i save() end)
  makeSlider(pe,"pe_max",0,5000,100,S.peMax,function(v) S.peMax=v save() end,nil,function(v)
   if v<=0 then return tr("s_inf") end
   return v.." m"
  end)
 
+ head(pe,"rd_head")
+ makeToggle(pe,"rd_on","rd_on_sub",S.peRadar,function(v) S.peRadar=v save() end)
+ makeSlider(pe,"rd_range",50,2000,50,S.peRadarR,function(v) S.peRadarR=v save() end,nil,function(v) return v.." m" end)
+ makeSlider(pe,"rd_size",100,260,10,S.peRadarS,function(v) S.peRadarS=v save() end,nil,function(v) return v.." px" end)
+
  head(pe,"hb_head")
- makeToggle(pe,"hb_on","hb_on_sub",S.hbOn,function(v) S.hbOn=v save() if not v then hbRestoreAll() end end)
- makeSlider(pe,"hb_size",2,30,1,S.hbSize,function(v) S.hbSize=v save() end,nil,function(v) return v.." studs" end)
+ hbTog=makeToggle(pe,"hb_on","hb_on_sub",S.hbOn,function(v) S.hbOn=v save() if not v then hbRestoreAll() end end)
+ head(pe,"hb_pre")
+ local hpg=new("Frame",{Size=UDim2.new(1,0,0,38),BackgroundTransparency=1,LayoutOrder=ord(pe)},pe)
+ new("UIGridLayout",{CellSize=UDim2.new(0.25,-8,0,38),CellPadding=UDim2.fromOffset(10,10),SortOrder=Enum.SortOrder.LayoutOrder},hpg)
+ for idx,v in ipairs({10,25,60,150}) do
+  makeButton(hpg,"hb_p"..idx,idx==4 and "bad" or "acc",function()
+   if hbSlider then hbSlider.set(v,true) end
+   if hbTog and not hbTog.get() then hbTog.set(true) end
+  end,idx)
+ end
+ hbSlider=makeSlider(pe,"hb_size",2,250,1,S.hbSize,function(v) S.hbSize=v save() end,nil,function(v) return v.." studs" end)
  makeSlider(pe,"hb_trans",0,1,0.1,S.hbTrans,function(v) S.hbTrans=v save() end)
+ makeToggle(pe,"hb_esp","hb_esp_sub",S.hbEsp,function(v) S.hbEsp=v save() end)
+ makeToggle(pe,"hb_paint","hb_paint_sub",S.hbPaint,function(v) S.hbPaint=v save() end)
+ makeToggle(pe,"hb_body","hb_body_sub",S.hbBody,function(v) S.hbBody=v save() end)
  makeToggle(pe,"hb_headp","hb_headp_sub",S.hbHead,function(v) S.hbHead=v save() end)
  makeToggle(pe,"hb_team","hb_team_sub",S.hbTeam,function(v) S.hbTeam=v save() end)
 
  --// Spielerliste
  head(pe,"pl_head")
  local cntLbl=makeLabelBox(pe,nil,nil,30)
+ local nearLbl=makeLabelBox(pe,nil,nil,28)
+ local qf=new("Frame",{Size=UDim2.new(1,0,0,38),BackgroundColor3=C.item,LayoutOrder=ord(pe)},pe)
+ round(qf,10)
+ local qfs=stroke(qf,C.border,0.3)
+ local qBox=new("TextBox",{BackgroundTransparency=1,Position=UDim2.fromOffset(12,0),Size=UDim2.new(1,-24,1,0),Text="",PlaceholderColor3=C.sub,
+  TextColor3=C.txt,Font=Enum.Font.GothamMedium,TextSize=12,ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left},qf)
+ reg(qBox,"pl_search","PlaceholderText")
+ qBox.Focused:Connect(function() tw(qfs,{Color=C.acc,Transparency=0}) end)
+ qBox.FocusLost:Connect(function() tw(qfs,{Color=C.border,Transparency=0.3}) end)
+ makeButton(pe,"pl_tpnear","acc",function()
+  local myc=P.Character
+  local myh=myc and myc:FindFirstChild("HumanoidRootPart")
+  local bp,bd
+  for _,pl in ipairs(Players:GetPlayers()) do
+   local hrp=(pl~=P) and pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
+   if hrp and myh then
+    local d=(hrp.Position-myh.Position).Magnitude
+    if not bd or d<bd then bp,bd=pl,d end
+   end
+  end
+  if bp then
+   HK.moveTo(bp.Character.HumanoidRootPart.Position+Vector3.new(0,S.tpHeight,0))
+   notify(trf("pl_tp_ok",bp.DisplayName),C.acc,true)
+  else
+   notify(tr("pl_gone"),C.bad,true)
+  end
+ end)
  makeButton(pe,"pl_stop",Color3.fromRGB(70,74,100),function() setSpec(nil) end)
  local noneLbl=makeLabelBox(pe,"pl_none",nil,30)
  local pool={}
@@ -3493,19 +4139,23 @@ end
   if r then return r end
   local f=new("Frame",{Size=UDim2.new(1,0,0,40),BackgroundColor3=C.item,LayoutOrder=1000+i,Visible=false},pe)
   round(f,9) stroke(f,C.border,0.4)
-  local nm=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(12,3),Size=UDim2.new(1,-150,0,18),TextColor3=C.txt,
+  local nm=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(12,3),Size=UDim2.new(1,-196,0,18),TextColor3=C.txt,
    Font=Enum.Font.GothamBold,TextSize=12,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},f)
-  local sub=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(12,21),Size=UDim2.new(1,-150,0,16),TextColor3=C.sub,
+  local sub=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(12,21),Size=UDim2.new(1,-196,0,16),TextColor3=C.sub,
    Font=Enum.Font.Gotham,TextSize=10,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},f)
-  local tpb=new("TextButton",{Size=UDim2.fromOffset(40,26),Position=UDim2.new(1,-122,0.5,-13),BackgroundColor3=C.acc,
+  local tpb=new("TextButton",{Size=UDim2.fromOffset(38,26),Position=UDim2.new(1,-178,0.5,-13),BackgroundColor3=C.acc,
    TextColor3=Color3.new(1,1,1),Font=Enum.Font.GothamBold,TextSize=11,AutoButtonColor=false},f)
   reg(tpb,"pl_tp")
   round(tpb,8)
-  local vb=new("TextButton",{Size=UDim2.fromOffset(70,26),Position=UDim2.new(1,-76,0.5,-13),BackgroundColor3=C.hover,
+  local vb=new("TextButton",{Size=UDim2.fromOffset(68,26),Position=UDim2.new(1,-136,0.5,-13),BackgroundColor3=C.hover,
    TextColor3=C.txt,Font=Enum.Font.GothamBold,TextSize=10,AutoButtonColor=false},f)
   reg(vb,"pl_view")
   round(vb,8)
-  r={f=f,nm=nm,sub=sub,pl=nil}
+  local fb=new("TextButton",{Size=UDim2.fromOffset(60,26),Position=UDim2.new(1,-64,0.5,-13),BackgroundColor3=C.hover,
+   TextColor3=C.txt,Font=Enum.Font.GothamBold,TextSize=10,AutoButtonColor=false},f)
+  reg(fb,"pl_focus")
+  round(fb,8)
+  r={f=f,nm=nm,sub=sub,fb=fb,pl=nil}
   tpb.MouseButton1Click:Connect(function()
    local pl=r.pl
    local hrp=pl and pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
@@ -3519,22 +4169,41 @@ end
   vb.MouseButton1Click:Connect(function()
    if r.pl then setSpec(r.pl) end
   end)
+  fb.MouseButton1Click:Connect(function()
+   local pl=r.pl
+   if not pl then return end
+   if X.focus==pl then
+    X.focus=nil
+    notify(tr("pl_focus_off"),C.acc,true)
+   else
+    X.focus=pl
+    notify(trf("pl_focus_on",pl.DisplayName),GOLD,true)
+   end
+  end)
   pool[i]=r
   return r
  end
  local function refreshList()
   local myc=P.Character
   local myh=myc and myc:FindFirstChild("HumanoidRootPart")
-  local items={}
+  local q=string.lower(qBox.Text)
+  local items,total={}, 0
   for _,pl in ipairs(Players:GetPlayers()) do
    if pl~=P then
-    local hrp=pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
-    items[#items+1]={pl=pl,d=(hrp and myh) and (hrp.Position-myh.Position).Magnitude or math.huge}
+    total=total+1
+    if q=="" or string.find(string.lower(pl.Name),q,1,true) or string.find(string.lower(pl.DisplayName),q,1,true) then
+     local hrp=pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
+     items[#items+1]={pl=pl,d=(hrp and myh) and (hrp.Position-myh.Position).Magnitude or math.huge}
+    end
    end
   end
   table.sort(items,function(a,b) return a.d<b.d end)
-  cntLbl.Text=trf("pl_count",#items)
+  cntLbl.Text=trf("pl_count",total)
   noneLbl.Parent.Visible=(#items==0)
+  nearLbl.Parent.Visible=(#items>0 and items[1].d<math.huge)
+  if #items>0 and items[1].d<math.huge then
+   nearLbl.Text=trf("pl_near",items[1].pl.DisplayName,math.floor(items[1].d))
+  end
   for i,it in ipairs(items) do
    local r=getRow(i)
    local pl=it.pl
@@ -3547,7 +4216,10 @@ end
    if hum then s=s.."  •  "..math.floor(hum.Health).." HP" end
    if pl.Team then s=s.."  •  "..pl.Team.Name end
    r.sub.Text=s
-   r.nm.TextColor3=(S.peColor==1 and pl.Team) and pl.TeamColor.Color or C.txt
+   local isF=(X.focus==pl)
+   r.nm.TextColor3=isF and GOLD or ((S.peColor==1 and pl.Team) and pl.TeamColor.Color or C.txt)
+   r.fb.BackgroundColor3=isF and GOLD or C.hover
+   r.fb.TextColor3=isF and Color3.new(0,0,0) or C.txt
   end
   for i=#items+1,#pool do
    pool[i].f.Visible=false
@@ -3555,6 +4227,7 @@ end
   end
  end
  onLang(function() pcall(refreshList) end)
+ conn(qBox:GetPropertyChangedSignal("Text"):Connect(function() pcall(refreshList) end))
  task.spawn(function()
   while alive do
    if cur=="pesp" then pcall(refreshList) end
@@ -3562,11 +4235,12 @@ end
   end
  end)
 
- makeLabelBox(pe,"pe_info",nil,92)
+ makeLabelBox(pe,"pe_info",nil,132)
 
  restorers[#restorers+1]=function()
   hbRestoreAll()
   for pl,o in pairs(objs) do destroyObj(o) objs[pl]=nil end
+  pcall(function() X.radar:Destroy() end)
   pcall(function() setSpec(nil,true) end)
  end
 end)()
@@ -4332,7 +5006,7 @@ do
  --// ---------------- CONFIGS (v3.9) ----------------
  head(sp,"cfg_head")
  do
-  local SKIP={configs=true,nfHook=true,hkMsgId=true,hkMsgJob=true,hkPing=true,homes=true,eggsInit=true,nfInit=true,espv=true,whv=true,fuseEnd=true,autoload=true}
+  local SKIP={configs=true,nfHook=true,hkMsgId=true,hkMsgJob=true,hkPing=true,homes=true,eggsInit=true,nfInit=true,espv=true,whv=true,fuseEnd=true,autoload=true,wps=true}
   local function deep(v)
    if type(v)~="table" then return v end
    local t={}
@@ -4661,4 +5335,4 @@ closeHub=function()
 end
 closeB.MouseButton1Click:Connect(function() closeHub() end)
 
-print("Antonio Hub v4.5 geladen")
+print("Antonio Hub v4.7 geladen")
