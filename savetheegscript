@@ -1,4 +1,13 @@
---// ANTONIO HUB v4.8 FINAL  (Start | ESP | Anzahl | Teleport | Visuals | Notifier | Webhook | Spieler | Spieler ESP | Performance | Tools | Autofarm | Home | Einstellungen)
+--// ANTONIO HUB v4.9 FINAL  (Start | ESP | Anzahl | Teleport | Visuals | Notifier | Webhook | Spieler | Spieler ESP | Performance | Tools | Autofarm | Home | Einstellungen)
+--// v4.9: TOOLS / PERFORMANCE / VISUALS / EINSTELLUNGEN ERWEITERT
+--//       Tools: Server-Info (Live), Hop-Modus (Zufaellig / Kleinster / Vollster), Server per JobId beitreten, PlaceId / Join-Skript / Position kopieren,
+--//              Auto-Rejoin bei Verbindungsverlust, "Nach Tod zurueck", Auto-Hop bei leerem Server (ohne Eier)
+--//       Performance: Extrem-Preset, Teil-Schatten aus, Mesh-Qualitaet senken, Welt-Sounds aus, Auto-Boost bei niedriger FPS, FPS-Statistik (Avg/Min/Max),
+--//              Speicher aufraeumen + Auto-Bereinigung
+--//       Visuals: Presets Nachtsicht / Cinematic, Schwarz-Weiss, Farbton (Warm/Kalt/Gruen), Himmel vereinfachen, Ego-Perspektive,
+--//              HUD mit Koordinaten / Uhrzeit, HUD-Position (Links/Mitte/Rechts) und Textgroesse
+--//       Einstellungen: Meldungen an/aus + Position (oben/unten), Klick-Sound, Panik-Taste (Ende), Beim Start verstecken, 4 neue Akzentfarben, 4 neue Schriften,
+--//              Executor-Faehigkeiten (Info-Karte)
 --// v4.8 FINAL: SPIELER ESP KOMPLETT AUSGEBAUT: Box 3D/2D/Ecken + seitlicher Lebensbalken, Kopf-Kreis, Namens-Modus (Anzeige/User/Beides), Team, Leaderstats, Tempo, Tag-Position, Text skaliert mit Entfernung,
 --//       Niedrig-Leben-Warnung, Nur N naechste, Auto-Fokus (naechster / wenig Leben), Naeheralarm, Join/Leave-Meldungen, Radar (dreht mit / Norden), Fadenkreuz, Fokus-Karte, ESP-Hotkey (K),
 --//       Hitbox nur fuer Fokus-Spieler, Spielerliste mit Sortierung + Zuschauen vor/zurueck. Alle Drawing-Zugriffe abgesichert.
@@ -90,6 +99,11 @@ local S={
  peBoxStyle=1,peHead=false,peNameMode=1,peTeamTag=false,peStats=false,peVel=false,peTagPos=1,peScale=false,peLow=false,peLowPct=30,peNearN=0,peAutoFocus=1,
  peAlert=false,peAlertR=100,peJoin=false,peCross=false,peCrossSize=10,peCard=false,peRadarRot=true,peSort=1,peHotkey=false,hbFocus=false,
  plSpeedVal=32,plJumpVal=100,plFlySpeed=60,plSpeedMode=1,plSprint=false,plSprintMul=1.6,plKeys=false,plCTP=false,plGravVal=100,plAntiVoid=false,wps={},
+ -- neu in v4.9 (Tools / Performance / Visuals / Einstellungen)
+ hopMode=1,tAutoRejoin=false,tDeathRet=false,tHopEmpty=false,tHopEmptySec=120,
+ pAutoBoost=false,pAutoFps=25,pGc=false,pGcInt=60,
+ vTint=1,vHudPos=false,vHudTime=false,vHudPlace=1,vHudSize=12,
+ toastOn=true,toastPos=1,uiSound=false,panicKey=true,startHidden=false,
 }
 do
  if canFile then
@@ -133,6 +147,14 @@ S.plJumpVal=math.clamp(S.plJumpVal,50,400)
 S.plFlySpeed=math.clamp(S.plFlySpeed,20,400)
 S.plSprintMul=math.clamp(S.plSprintMul,1.1,3)
 S.plGravVal=math.clamp(S.plGravVal,10,300)
+S.hopMode=math.clamp(math.floor(S.hopMode),1,3)
+S.tHopEmptySec=math.clamp(S.tHopEmptySec,30,900)
+S.pAutoFps=math.clamp(S.pAutoFps,10,60)
+S.pGcInt=math.clamp(S.pGcInt,30,600)
+S.vTint=math.clamp(math.floor(S.vTint),1,4)
+S.vHudPlace=math.clamp(math.floor(S.vHudPlace),1,3)
+S.vHudSize=math.clamp(S.vHudSize,10,20)
+S.toastPos=math.clamp(math.floor(S.toastPos),1,2)
 local noSave,saveQueued=false,false
 local function save()
  if not canFile or saveQueued or noSave then return end
@@ -298,20 +320,31 @@ add("h_radius","Home-Radius","Home radius")
 add("v_preset","Presets","Presets")
 add("v_scout","Ei-Jagd-Preset","Egg hunt preset")
 add("v_reset","Visuals zurücksetzen","Reset visuals")
+add("v_night","Nachtsicht-Preset","Night vision preset")
+add("v_cine","Cinematic-Preset","Cinematic preset")
 add("v_light","Beleuchtung","Lighting")
 add("fullbright","Fullbright","Fullbright") add("fb_sub","Alles dauerhaft hell","Keeps everything bright") add("fb_bright","Helligkeit","Brightness")
 add("nofog","Kein Nebel","No fog") add("nofog_sub","Entfernt Nebel und Atmosphäre","Removes fog and atmosphere")
 add("timefix","Tageszeit fixieren","Lock time of day") add("timefix_sub","Hält die Uhrzeit konstant","Keeps the clock constant") add("clock","Uhrzeit","Time")
+add("sky","Himmel vereinfachen","Simplify sky") add("sky_sub","Keine Wolken, Sterne und Himmelskörper","No clouds, stars or celestial bodies")
 add("v_color","Farben","Colors")
 add("colboost","Farb-Boost","Color boost") add("colboost_sub","Sattere Farben und mehr Kontrast","Richer colors and more contrast") add("sat","Sättigung","Saturation")
 add("contrast","Kontrast","Contrast")
+add("bw","Schwarz-Weiß","Black & white") add("bw_sub","Entfernt alle Farben","Removes all color")
+add("tint","Farbton (mit Farb-Boost)","Color tint (with color boost)")
+add("tint_none","Keiner","None") add("tint_warm","Warm","Warm") add("tint_cool","Kalt","Cool") add("tint_green","Grün","Green")
 add("v_cam","Kamera","Camera")
 add("fov_on","FOV ändern","Change FOV") add("fov_sub","Wendet das eingestellte Sichtfeld an","Applies the selected field of view") add("fov_val","Sichtfeld (FOV)","Field of view (FOV)")
 add("zoom","Zoom (Taste C halten)","Zoom (hold C)") add("zoom_sub","Heranzoomen, um Eier früher zu sehen","Zoom in to spot eggs earlier") add("zoom_fov","Zoom-Stärke (FOV)","Zoom strength (FOV)")
 add("zlim","Zoom-Limit aufheben","Remove zoom limit") add("zlim_sub","Kamera darf viel weiter herauszoomen (Mausrad)","Camera may zoom out much further (mouse wheel)") add("zlim_val","Max. Kameradistanz","Max camera distance")
+add("fpv","Ego-Perspektive","First person") add("fpv_sub","Sperrt die Kamera in der Ego-Ansicht","Locks the camera to first person")
 add("v_hud","Anzeige","Overlay")
 add("hud","FPS/Ping-Anzeige","FPS/ping overlay") add("hud_sub","Kleines Overlay mit FPS, Ping und Eier – auch bei verstecktem Menü","Small overlay with FPS, ping and eggs – even with the menu hidden")
 add("hud_text","FPS %s  •  Ping %s  •  Eier %d  •  Markiert %d","FPS %s  •  Ping %s  •  Eggs %d  •  Marked %d")
+add("hud_pos","Koordinaten im HUD","Coordinates in HUD") add("hud_pos_sub","Zeigt deine Position im Overlay","Shows your position in the overlay")
+add("hud_time","Uhrzeit im HUD","Clock in HUD") add("hud_time_sub","Zeigt die Tageszeit im Overlay","Shows the time in the overlay")
+add("hud_place","HUD-Position","HUD position") add("o_left","Links","Left") add("o_right","Rechts","Right")
+add("hud_size","HUD-Textgröße","HUD text size")
 -- Notifier
 add("n_head","Benachrichtigung","Notification")
 add("n_on","Notifier aktiv","Notifier active") add("n_on_sub","Meldung, wenn ein gewünschtes Ei auftaucht","Alert when a wanted egg appears")
@@ -471,15 +504,19 @@ add("pl_prev","Vorheriger","Previous") add("pl_next","Nächster","Next")
 -- Performance
 add("f_live","Live","Live")
 add("f_live_t","FPS %s  •  Ping %s  •  RAM %s MB","FPS %s  •  Ping %s  •  RAM %s MB")
+add("f_stats_t","Ø %d  •  Min %d  •  Max %d  (letzte 30 s)","Avg %d  •  Min %d  •  Max %d  (last 30 s)")
 add("f_preset","Presets","Presets")
 add("boost_preset","FPS-Boost-Preset","FPS boost preset")
+add("ext_preset","Extrem-Preset","Extreme preset")
 add("afk_preset","AFK-Preset","AFK preset")
 add("reset_all","Alles zurücksetzen","Reset everything")
 add("f_gfx","Grafik","Graphics")
 add("shadows","Schatten aus","Shadows off") add("shadows_sub","Weniger GPU-Last","Less GPU load")
+add("cast","Teil-Schatten aus","Part shadows off") add("cast_sub","Kein Teil wirft mehr einen Schatten","No part casts shadows anymore")
 add("part","Partikel aus","Particles off") add("part_sub","Partikel, Trails, Beams, Feuer & Rauch aus","Particles, trails, beams, fire & smoke off")
 add("fx","Effekte aus","Effects off") add("fx_sub","Blur, Bloom, Sonnenstrahlen & Co.","Blur, bloom, sun rays & co.")
 add("mat","Materialien vereinfachen","Simplify materials") add("mat_sub","Alles glatt – spart Rechenleistung","Everything smooth – saves performance")
+add("mesh","Mesh-Qualität senken","Lower mesh quality") add("mesh_sub","MeshParts nutzen die Performance-Darstellung","MeshParts use the performance fidelity")
 add("tex","Texturen ausblenden","Hide textures") add("tex_sub","Decals & Texturen unsichtbar – spart Speicher","Decals & textures invisible – saves memory")
 add("tr_hide","Bäume ausblenden","Hide trees") add("tr_hide_sub","Bäume & Büsche unsichtbar – freie Sicht auf Eier","Trees & bushes invisible – clear view of eggs")
 add("water","Wasser vereinfachen","Simplify water") add("water_sub","Keine Wellen und Spiegelungen","No waves or reflections")
@@ -490,17 +527,37 @@ add("cap","FPS-Limit","FPS cap") add("cap_sub","Begrenzt die Bildrate","Caps the
 add("cap_na","FPS-Limit wird von deinem Executor nicht unterstützt.","FPS cap isn't supported by your executor.")
 add("f_afk","AFK-Modus","AFK mode")
 add("mute","Ton stumm","Mute sound") add("mute_sub","Setzt die Master-Lautstärke auf 0","Sets the master volume to 0")
+add("wsnd","Welt-Sounds aus","World sounds off") add("wsnd_sub","Alle Sounds in der Map stumm","Mutes every sound in the map")
 add("render3d","3D-Rendering aus","3D rendering off") add("render3d_sub","Schwarzer Bildschirm, spart extrem viel Leistung","Black screen, saves a huge amount of performance")
-add("f_tip","FPS-Boost: Schatten, Partikel, Effekte, Texturen, Wasser, andere Spieler und niedrigste Grafikstufe. AFK-Preset: zusätzlich Ton stumm, FPS-Limit 20 und 3D-Rendering aus. Beim Entladen wird alles zurückgesetzt.","FPS boost: shadows, particles, effects, textures, water, other players and lowest graphics level. AFK preset: additionally mute, FPS cap 20 and 3D rendering off. Everything is restored on unload.")
+add("f_auto","Automatik & Speicher","Automation & memory")
+add("autob","Auto-Boost bei niedriger FPS","Auto boost on low FPS") add("autob_sub","Wendet das FPS-Boost-Preset an, wenn die FPS zu lange niedrig sind","Applies the FPS boost preset when FPS stay low for too long")
+add("autob_fps","FPS-Schwelle","FPS threshold") add("autob_msg","Auto-Boost aktiviert (FPS %d)","Auto boost applied (FPS %d)")
+add("gc_btn","Speicher aufräumen","Clean up memory") add("gc_ok","Speicher aufgeräumt: %d MB frei","Memory cleaned: %d MB freed")
+add("gc_auto","Auto-Speicherbereinigung","Auto memory cleanup") add("gc_auto_sub","Räumt regelmäßig den Speicher auf","Cleans up memory regularly") add("gc_int","Intervall","Interval")
+add("f_tip","FPS-Boost: Schatten, Partikel, Effekte, Texturen, Wasser, andere Spieler und niedrigste Grafikstufe. Extrem-Preset: zusätzlich Materialien, Bäume, Teil-Schatten und Mesh-Qualität. AFK-Preset: zusätzlich Ton stumm, FPS-Limit 20 und 3D-Rendering aus. Beim Entladen wird alles zurückgesetzt.","FPS boost: shadows, particles, effects, textures, water, other players and lowest graphics level. Extreme preset: additionally materials, trees, part shadows and mesh quality. AFK preset: additionally mute, FPS cap 20 and 3D rendering off. Everything is restored on unload.")
 -- Tools
 add("t_server","Server","Server") add("hop","Server Hop","Server hop") add("rejoin","Rejoin","Rejoin")
+add("hop_mode","Hop-Modus","Hop mode") add("hm_rand","Zufällig","Random") add("hm_small","Kleinster","Smallest") add("hm_full","Vollster","Fullest")
+add("hop_join","Server-ID (JobId) einfügen...","Paste server ID (JobId)...") add("hop_join_btn","Server per ID beitreten","Join server by ID") add("hop_join_bad","Bitte eine gültige Server-ID einfügen","Please paste a valid server ID")
 add("t_char","Charakter","Character")
 add("respawn","Respawn","Respawn") add("respawn_pos","Respawn (gleiche Stelle)","Respawn (same spot)") add("respawning","Respawne...","Respawning...")
 add("t_misc","Sonstiges","Misc")
 add("afk","Anti-AFK","Anti-AFK") add("afk_sub","Verhindert den Idle-Kick","Prevents the idle kick")
 add("afk_click","Anti-AFK Impuls","Anti-AFK pulse") add("afk_click_sub","Sendet zusätzlich regelmäßig einen Klick","Also sends a click regularly") add("afk_int","Impuls-Intervall","Pulse interval")
 add("copy_id","Server-ID kopieren","Copy server ID") add("copy_ok","Server-ID kopiert","Server ID copied") add("copy_na","Zwischenablage nicht verfügbar","Clipboard not available")
+add("copy_place","PlaceId kopieren","Copy PlaceId") add("copy_place_ok","PlaceId kopiert","PlaceId copied")
+add("copy_join","Join-Skript kopieren","Copy join script") add("copy_join_ok","Join-Skript kopiert","Join script copied")
+add("copy_pos","Position kopieren","Copy position") add("copy_pos_ok","Position kopiert","Position copied")
 add("paths_copy","Ei-Pfade kopieren","Copy egg paths") add("paths_ok","%d Pfade kopiert","%d paths copied") add("paths_none","Keine Eier markiert","No eggs marked")
+add("t_info","Server-Info","Server info")
+add("t_info_t","Spieler %d/%d  •  Ping %s  •  Server-Laufzeit %s\nPlaceId %s  •  JobId …%s","Players %d/%d  •  Ping %s  •  Server uptime %s\nPlaceId %s  •  JobId …%s")
+add("t_auto","Automatik","Automation")
+add("t_rejoin","Auto-Rejoin","Auto rejoin") add("t_rejoin_sub","Verbindet neu, wenn du getrennt wirst","Reconnects when you get disconnected")
+add("t_rejoin_msg","Verbindung verloren – verbinde neu...","Connection lost – reconnecting...")
+add("t_deathret","Nach Tod zurück","Return after death") add("t_deathret_sub","Teleportiert dich nach dem Respawn zur letzten Position","Teleports you to your last position after respawning")
+add("t_death_msg","Zurück zur letzten Position","Back to last position")
+add("t_hopempty","Auto-Hop bei leerem Server","Auto hop on empty server") add("t_hopempty_sub","Wechselt den Server, wenn zu lange kein Ei da ist","Switches server when no egg is around for too long")
+add("t_hopempty_sec","Wartezeit ohne Ei","Wait without eggs") add("t_hopempty_msg","Keine Eier – wechsle Server","No eggs – switching server")
 add("al_head","Auto-Execute","Auto execute")
 add("al_url","Skript-URL (https://...)","Script URL (https://...)")
 add("al_saved","URL gespeichert","URL saved") add("al_cleared","URL gelöscht","URL cleared")
@@ -544,6 +601,12 @@ add("fz_info","Das Overlay lässt sich verschieben. Der Timer startet automatisc
 add("s_lang","Sprache","Language") add("s_lang_t","Menüsprache","Menu language")
 add("lang_de","Deutsch","Deutsch") add("lang_en","English","English")
 add("s_general","Allgemein","General")
+add("s_ui","Menü-Verhalten","Menu behavior")
+add("s_toast","Meldungen anzeigen","Show toasts") add("s_toast_sub","Blendet alle Toast-Meldungen ein oder aus","Shows or hides all toast alerts")
+add("s_toastpos","Meldungs-Position","Toast position")
+add("s_uisound","Klick-Sound","Click sound") add("s_uisound_sub","Leiser Ton bei jedem Button","Soft sound on every button")
+add("s_panic","Panik-Taste (Ende)","Panic key (End)") add("s_panic_sub","Taste „Ende“ entlädt den Hub sofort","Pressing “End” unloads the hub instantly")
+add("s_starthid","Beim Start verstecken","Start hidden") add("s_starthid_sub","Menü startet unsichtbar, die Menü-Taste öffnet es","Menu starts hidden, the menu key opens it")
 add("s_design","Design","Design")
 add("s_theme","Hintergrund","Background")
 add("th_dark","Dunkel","Dark") add("th_mid","Mitternacht","Midnight") add("th_amoled","AMOLED","AMOLED") add("th_light","Hell","Light")
@@ -614,6 +677,9 @@ add("s_save_na","Dein Executor kann keine Dateien speichern – Einstellungen ge
 add("s_reset","Einstellungen zurücksetzen","Reset settings")
 add("s_reset_msg","Zurückgesetzt – bitte Skript neu ausführen","Reset – please run the script again")
 add("s_unload","Hub entladen","Unload hub")
+add("s_info","Info","Info")
+add("s_caps_t","Executor: %s\nDateien %s  •  Drawing %s  •  HTTP %s  •  Zwischenablage %s\nFPS-Limit %s  •  Auto-Execute %s  •  Klick-Signale %s","Executor: %s\nFiles %s  •  Drawing %s  •  HTTP %s  •  Clipboard %s\nFPS cap %s  •  Auto execute %s  •  Click signals %s")
+add("s_ver","Antonio Hub v4.9  •  discord.gg/saveegg","Antonio Hub v4.9  •  discord.gg/saveegg")
 
 local langFns,textObjs={}, {}
 local function tr(k) local t=D[S.lang] return (t and t[k]) or D.de[k] or k end
@@ -645,6 +711,10 @@ local ACCENTS={
  {c1=rgb(240,90,190),c2=rgb(170,100,255)},
  {c1=rgb(0,210,200),c2=rgb(60,130,255)},
  {c1=rgb(220,220,235),c2=rgb(130,140,170)},
+ {c1=rgb(255,60,60),c2=rgb(255,120,200)},
+ {c1=rgb(120,200,60),c2=rgb(40,170,150)},
+ {c1=rgb(255,190,0),c2=rgb(255,90,0)},
+ {c1=rgb(90,90,255),c2=rgb(200,80,255)},
 }
 local function ef(n)
  local ok,v=pcall(function() return Enum.Font[n] end)
@@ -661,6 +731,10 @@ local FAMILIES={
  {n="Code",r="Code",m="Code",b="Code",k="Code"},
  {n="Sci-Fi",r="SciFi",m="SciFi",b="SciFi",k="SciFi"},
  {n="Fredoka",r="FredokaOne",m="FredokaOne",b="FredokaOne",k="FredokaOne"},
+ {n="Oswald",r="Oswald",m="Oswald",b="Oswald",k="Oswald"},
+ {n="Michroma",r="Michroma",m="Michroma",b="Michroma",k="Michroma"},
+ {n="Jura",r="Jura",m="Jura",b="Jura",k="Jura"},
+ {n="Bangers",r="Bangers",m="Bangers",b="Bangers",k="Bangers"},
 }
 for _,f in ipairs(FAMILIES) do
  f.E={r=ef(f.r),m=ef(f.m),b=ef(f.b),k=ef(f.k)}
@@ -1419,6 +1493,7 @@ HK.queueLoad=function()
  end
 end
 
+-- v4.9: Hop-Modus 1 = zufaelliger Server, 2 = kleinster Server, 3 = vollster Server (mit freiem Platz)
 local function serverHop()
  if hopping then return end
  hopping=true
@@ -1426,7 +1501,8 @@ local function serverHop()
   setToolStatus(tr("srv_search"))
   local picked
   pcall(function()
-   local url="https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100"
+   local order=(S.hopMode==3) and "Desc" or "Asc"
+   local url="https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder="..order.."&limit=100"
    local body=httpGet(url)
    if not body then return end
    local data=HttpService:JSONDecode(body)
@@ -1436,7 +1512,9 @@ local function serverHop()
      pool[#pool+1]=s.id
     end
    end
-   if #pool>0 then picked=pool[math.random(1,#pool)] end
+   if #pool>0 then
+    if S.hopMode==1 then picked=pool[math.random(1,#pool)] else picked=pool[1] end
+   end
   end)
   if not alive then return end
   HK.queueLoad()
@@ -1611,6 +1689,20 @@ local function head(parent,key,order)
  return l
 end
 
+-- v4.9: leiser Klick-Sound (Einstellungen > Menue-Verhalten)
+HK.click=function()
+ if not S.uiSound then return end
+ pcall(function()
+  local s=Instance.new("Sound")
+  s.SoundId="rbxasset://sounds/electronicpingshort.wav"
+  s.Volume=0.25
+  s.PlaybackSpeed=1.7
+  s.Parent=game:GetService("SoundService")
+  s:Play()
+  game:GetService("Debris"):AddItem(s,2)
+ end)
+end
+
 local function makeButton(parent,text,color,cb,order)
  local b=new("TextButton",{Size=UDim2.new(1,0,0,38),BackgroundColor3=colorOf(color),TextColor3=Color3.new(1,1,1),Font=Enum.Font.GothamBold,
   TextSize=12,AutoButtonColor=false,LayoutOrder=ord(parent,order)},parent)
@@ -1621,6 +1713,7 @@ local function makeButton(parent,text,color,cb,order)
  b.MouseEnter:Connect(function() tw(b,{BackgroundColor3=colorOf(color):Lerp(Color3.new(1,1,1),0.15)}) tw(bs,{Transparency=0.6}) end)
  b.MouseLeave:Connect(function() tw(b,{BackgroundColor3=colorOf(color)}) tw(bs,{Transparency=0.85}) end)
  b.MouseButton1Click:Connect(function()
+  HK.click()
   tw(b,{BackgroundColor3=colorOf(color):Lerp(Color3.new(1,1,1),0.35)},0.08)
   task.delay(0.1,function() tw(b,{BackgroundColor3=colorOf(color)},0.2) end)
   if cb then cb(b) end
@@ -1653,7 +1746,7 @@ local function makeToggle(parent,title,sub,default,cb,order,mod)
  end
  themed(function() paint(false) end)
  local function fire(v) if mod then modSet(mod,v) elseif cb then cb(v) end end
- row.MouseButton1Click:Connect(function() on=not on paint(true) fire(on) end)
+ row.MouseButton1Click:Connect(function() HK.click() on=not on paint(true) fire(on) end)
  row.MouseEnter:Connect(function() tw(row,{BackgroundColor3=C.hover}) end)
  row.MouseLeave:Connect(function() tw(row,{BackgroundColor3=C.item}) end)
  local obj={row=row}
@@ -1687,6 +1780,7 @@ local function makeStepper(parent,title,init,cb,order)
   b.MouseEnter:Connect(function() tw(b,{BackgroundColor3=C.acc}) end)
   b.MouseLeave:Connect(function() tw(b,{BackgroundColor3=C.hover}) end)
   b.MouseButton1Click:Connect(function()
+   HK.click()
    local t=cb(dir)
    if t then val.Text=t end
   end)
@@ -1754,7 +1848,7 @@ local function makeSegment(parent,title,keys,sel,cb,order)
   reg(b,k)
   round(b,8)
   btns[i]=b
-  b.MouseButton1Click:Connect(function() curI=i paint() cb(i) end)
+  b.MouseButton1Click:Connect(function() HK.click() curI=i paint() cb(i) end)
  end
  themed(paint)
  return {set=function(i) curI=i paint() end}
@@ -1766,7 +1860,7 @@ local function makeSwatches(parent,title,list,sel,cb,order)
  reg(new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(14,6),Size=UDim2.new(1,-28,0,18),TextColor3=C.txt,
   Font=Enum.Font.GothamBold,TextSize=13,TextXAlignment=Enum.TextXAlignment.Left},f),title)
  local holder=new("Frame",{BackgroundTransparency=1,Position=UDim2.fromOffset(14,32),Size=UDim2.new(1,-28,0,26)},f)
- new("UIListLayout",{FillDirection=Enum.FillDirection.Horizontal,Padding=UDim.new(0,10),SortOrder=Enum.SortOrder.LayoutOrder},holder)
+ new("UIListLayout",{FillDirection=Enum.FillDirection.Horizontal,Padding=UDim.new(0,8),SortOrder=Enum.SortOrder.LayoutOrder},holder)
  local sts,curI={}, sel
  local function paint()
   for i,st in ipairs(sts) do tw(st,{Transparency=(i==curI) and 0 or 1},0.15) end
@@ -1779,7 +1873,7 @@ local function makeSwatches(parent,title,list,sel,cb,order)
   st.Thickness=2
   themed(function() st.Color=C.txt end)
   sts[i]=st
-  b.MouseButton1Click:Connect(function() curI=i paint() cb(i) end)
+  b.MouseButton1Click:Connect(function() HK.click() curI=i paint() cb(i) end)
  end
  paint()
  return {set=function(i) curI=i paint() end}
@@ -1849,17 +1943,30 @@ local function makeTile(parent,title,mod,order)
  MOD[mod].views[#MOD[mod].views+1]=paint
  onLang(paint)
  themed(paint)
- b.MouseButton1Click:Connect(function() modSet(mod,not MOD[mod].get()) end)
+ b.MouseButton1Click:Connect(function() HK.click() modSet(mod,not MOD[mod].get()) end)
  b.MouseEnter:Connect(function() tw(b,{BackgroundColor3=C.hover}) end)
  b.MouseLeave:Connect(function() tw(b,{BackgroundColor3=C.item}) end)
  return b
 end
 
---// Toast-Benachrichtigungen
+--// Toast-Benachrichtigungen (v4.9: Position oben/unten, komplett abschaltbar)
 local toastHolder=new("Frame",{Size=UDim2.fromOffset(340,240),AnchorPoint=Vector2.new(0.5,0),Position=UDim2.new(0.5,0,0,20),BackgroundTransparency=1},gui,true)
-new("UIListLayout",{Padding=UDim.new(0,6),HorizontalAlignment=Enum.HorizontalAlignment.Center,SortOrder=Enum.SortOrder.LayoutOrder},toastHolder,true)
+HK.toastLayout=new("UIListLayout",{Padding=UDim.new(0,6),HorizontalAlignment=Enum.HorizontalAlignment.Center,SortOrder=Enum.SortOrder.LayoutOrder},toastHolder,true)
+HK.applyToast=function()
+ if S.toastPos==2 then
+  toastHolder.AnchorPoint=Vector2.new(0.5,1)
+  toastHolder.Position=UDim2.new(0.5,0,1,-20)
+  HK.toastLayout.VerticalAlignment=Enum.VerticalAlignment.Bottom
+ else
+  toastHolder.AnchorPoint=Vector2.new(0.5,0)
+  toastHolder.Position=UDim2.new(0.5,0,0,20)
+  HK.toastLayout.VerticalAlignment=Enum.VerticalAlignment.Top
+ end
+end
+HK.applyToast()
 local notifyLog={}
 local function notify(text,col,silent,onClick)
+ if not S.toastOn then return end
  col=col or C.acc
  local f=new("Frame",{Size=UDim2.fromOffset(330,38),BackgroundColor3=C.item,BackgroundTransparency=1},toastHolder,true)
  round(f,10)
@@ -2080,7 +2187,7 @@ for i,n in ipairs(PAGES) do
  navBtns[n]=b
  b.MouseEnter:Connect(function() if cur~=n then tw(b,{BackgroundTransparency=0.6,TextColor3=C.txt}) end end)
  b.MouseLeave:Connect(function() if cur~=n then tw(b,{BackgroundTransparency=1,TextColor3=C.sub}) end end)
- b.MouseButton1Click:Connect(function() showPage(n) end)
+ b.MouseButton1Click:Connect(function() HK.click() showPage(n) end)
 end
 themed(function()
  for id,b in pairs(navBtns) do
@@ -2567,31 +2674,95 @@ task.spawn(function()
  end
 end)
 
---// ---------------- VISUALS (v4.0) ----------------
+--// ---------------- VISUALS (v4.0, v4.9 erweitert) ----------------
 ;(function()
  local vp=scroller(newPage("visuals"))
- local V={fb=false,fbBright=S.vBright,fog=false,time=false,clock=S.vClock,col=false,sat=S.vSat,con=S.vContrast,
+ local V={fb=false,fbBright=S.vBright,fog=false,time=false,clock=S.vClock,col=false,bw=false,sat=S.vSat,con=S.vContrast,tint=S.vTint,
   fov=false,fovVal=S.vFov,zoom=false,zoomFov=S.vZoom,zlim=false,zlimVal=S.vMaxZoom}
  local tg={}
- local fbOrig,fogOrig,atmo,timeOrig,origFov,ccE,zlOrig
+ local fbOrig,fogOrig,atmo,timeOrig,origFov,ccE,zlOrig,skyOrig,camOrig
  local zooming,zbase=false,nil
+ local satS,conS,fovS,fbS,tintSeg
+ local TINTS={Color3.new(1,1,1),Color3.fromRGB(255,236,210),Color3.fromRGB(214,235,255),Color3.fromRGB(204,255,217)}
 
- local function ccUpdate()
-  if ccE then pcall(function() ccE.Saturation=V.sat ccE.Contrast=V.con end) end
+ -- ColorCorrection wird nur erzeugt, solange Farb-Boost oder Schwarz-Weiss aktiv ist
+ local function ccRefresh()
+  local need=V.col or V.bw
+  if need and not ccE then
+   pcall(function()
+    ccE=Instance.new("ColorCorrectionEffect")
+    ccE.Name="AntonioCC"
+    ccE.Parent=Lighting
+   end)
+  end
+  if not need then
+   if ccE then pcall(function() ccE:Destroy() end) ccE=nil end
+   return
+  end
+  if ccE then
+   pcall(function()
+    ccE.Saturation=V.bw and -1 or V.sat
+    ccE.Contrast=V.col and V.con or 0
+    ccE.TintColor=(V.col and not V.bw) and TINTS[V.tint] or Color3.new(1,1,1)
+   end)
+  end
+ end
+
+ local function skyApply(v)
+  pcall(function()
+   if v then
+    skyOrig={sky={}}
+    local t=workspace:FindFirstChildOfClass("Terrain")
+    local cl=t and t:FindFirstChildOfClass("Clouds")
+    if cl then skyOrig.cl=cl skyOrig.clE=cl.Enabled cl.Enabled=false end
+    for _,s in ipairs(Lighting:GetChildren()) do
+     if s:IsA("Sky") then
+      skyOrig.sky[#skyOrig.sky+1]={o=s,b=s.CelestialBodiesShown,c=s.StarCount}
+      s.CelestialBodiesShown=false
+      s.StarCount=0
+     end
+    end
+   elseif skyOrig then
+    if skyOrig.cl then skyOrig.cl.Enabled=skyOrig.clE end
+    for _,e in ipairs(skyOrig.sky) do
+     pcall(function() e.o.CelestialBodiesShown=e.b e.o.StarCount=e.c end)
+    end
+    skyOrig=nil
+   end
+  end)
  end
 
  --// Presets
  head(vp,"v_preset")
- local pg=new("Frame",{Size=UDim2.new(1,0,0,38),BackgroundTransparency=1,LayoutOrder=ord(vp)},vp)
+ local pg=new("Frame",{Size=UDim2.new(1,0,0,86),BackgroundTransparency=1,LayoutOrder=ord(vp)},vp)
  new("UIGridLayout",{CellSize=UDim2.new(0.5,-5,0,38),CellPadding=UDim2.fromOffset(10,10),SortOrder=Enum.SortOrder.LayoutOrder},pg)
+ local function on(k) if tg[k] and not tg[k].get() then tg[k].set(true) end end
+ local function setTint(i)
+  V.tint=i S.vTint=i save()
+  if tintSeg then tintSeg.set(i) end
+  ccRefresh()
+ end
  makeButton(pg,"v_scout","acc",function()
-  for _,k in ipairs({"fb","fog","zlim","fov"}) do
-   if tg[k] and not tg[k].get() then tg[k].set(true) end
-  end
+  for _,k in ipairs({"fb","fog","zlim","fov"}) do on(k) end
  end,1)
+ makeButton(pg,"v_night",Color3.fromRGB(40,150,100),function()
+  for _,k in ipairs({"fb","fog","col"}) do on(k) end
+  if fbS then fbS.set(3,true) end
+  if satS then satS.set(0.3,true) end
+  if conS then conS.set(0.3,true) end
+  setTint(4)
+ end,2)
+ makeButton(pg,"v_cine",Color3.fromRGB(90,60,200),function()
+  on("col") on("fov")
+  if satS then satS.set(0.8,true) end
+  if conS then conS.set(0.35,true) end
+  if fovS then fovS.set(70,true) end
+  setTint(2)
+ end,3)
  makeButton(pg,"v_reset","bad",function()
   for _,t in pairs(tg) do if t.get() then t.set(false) end end
- end,2)
+  setTint(1)
+ end,4)
 
  --// Beleuchtung
  head(vp,"v_light")
@@ -2607,7 +2778,7 @@ end)
   end
   V.fb=v
  end)
- makeSlider(vp,"fb_bright",1,5,0.5,V.fbBright,function(v) V.fbBright=v S.vBright=v save() end,nil,function(v) return tostring(v) end)
+ fbS=makeSlider(vp,"fb_bright",1,5,0.5,V.fbBright,function(v) V.fbBright=v S.vBright=v save() end,nil,function(v) return tostring(v) end)
  tg.fog=makeToggle(vp,"nofog","nofog_sub",false,function(v)
   if v and not V.fog then
    fogOrig={FogEnd=Lighting.FogEnd,FogStart=Lighting.FogStart}
@@ -2631,25 +2802,23 @@ end)
   local m=(v-h)>=0.5 and "30" or "00"
   return string.format("%02d:%s",h%24,m)
  end)
+ tg.sky=makeToggle(vp,"sky","sky_sub",false,function(v) skyApply(v) end)
 
  --// Farben
  head(vp,"v_color")
  tg.col=makeToggle(vp,"colboost","colboost_sub",false,function(v)
-  if v and not V.col then
-   pcall(function()
-    ccE=Instance.new("ColorCorrectionEffect")
-    ccE.Name="AntonioCC"
-    ccE.Saturation=V.sat
-    ccE.Contrast=V.con
-    ccE.Parent=Lighting
-   end)
-  elseif not v then
-   if ccE then pcall(function() ccE:Destroy() end) ccE=nil end
-  end
   V.col=v
+  ccRefresh()
  end)
- makeSlider(vp,"sat",-1,2,0.1,V.sat,function(v) V.sat=v S.vSat=v save() ccUpdate() end)
- makeSlider(vp,"contrast",-0.5,1,0.1,V.con,function(v) V.con=v S.vContrast=v save() ccUpdate() end)
+ satS=makeSlider(vp,"sat",-1,2,0.1,V.sat,function(v) V.sat=v S.vSat=v save() ccRefresh() end)
+ conS=makeSlider(vp,"contrast",-0.5,1,0.1,V.con,function(v) V.con=v S.vContrast=v save() ccRefresh() end)
+ tintSeg=makeSegment(vp,"tint",{"tint_none","tint_warm","tint_cool","tint_green"},V.tint,function(i)
+  V.tint=i S.vTint=i save() ccRefresh()
+ end)
+ tg.bw=makeToggle(vp,"bw","bw_sub",false,function(v)
+  V.bw=v
+  ccRefresh()
+ end)
 
  --// Kamera
  head(vp,"v_cam")
@@ -2659,7 +2828,7 @@ end)
   elseif not v and cam and origFov then cam.FieldOfView=origFov end
   V.fov=v
  end)
- makeSlider(vp,"fov_val",40,120,5,V.fovVal,function(v) V.fovVal=v S.vFov=v save() end)
+ fovS=makeSlider(vp,"fov_val",40,120,5,V.fovVal,function(v) V.fovVal=v S.vFov=v save() end)
  tg.zoom=makeToggle(vp,"zoom","zoom_sub",false,function(v) V.zoom=v end)
  makeSlider(vp,"zoom_fov",10,60,5,V.zoomFov,function(v) V.zoomFov=v S.vZoom=v save() end)
  tg.zlim=makeToggle(vp,"zlim","zlim_sub",false,function(v)
@@ -2671,15 +2840,39 @@ end)
   V.zlim=v
  end)
  makeSlider(vp,"zlim_val",50,2000,50,V.zlimVal,function(v) V.zlimVal=v S.vMaxZoom=v save() end,nil,function(v) return v.." studs" end)
+ tg.fpv=makeToggle(vp,"fpv","fpv_sub",false,function(v)
+  pcall(function()
+   if v then
+    if camOrig==nil then camOrig=P.CameraMode end
+    P.CameraMode=Enum.CameraMode.LockFirstPerson
+   elseif camOrig~=nil then
+    P.CameraMode=camOrig
+    camOrig=nil
+   end
+  end)
+ end)
 
  --// Overlay (FPS / Ping / Eier) - bleibt sichtbar, auch wenn das Menü versteckt ist
  head(vp,"v_hud")
  local hud=raw("TextLabel",{Name="AntonioHUD",BackgroundColor3=Color3.new(0,0,0),BackgroundTransparency=0.35,BorderSizePixel=0,
   Position=UDim2.fromOffset(10,10),Size=UDim2.fromOffset(0,24),AutomaticSize=Enum.AutomaticSize.X,TextColor3=Color3.new(1,1,1),
-  Font=Enum.Font.GothamBold,TextSize=12,Text="",Visible=S.vHud,ZIndex=5},gui)
+  Font=Enum.Font.GothamBold,TextSize=S.vHudSize,Text="",Visible=S.vHud,ZIndex=5},gui)
  round(hud,6)
  new("UIPadding",{PaddingLeft=UDim.new(0,10),PaddingRight=UDim.new(0,10)},hud,true)
+ local function applyHud()
+  local i=S.vHudPlace
+  hud.AnchorPoint=Vector2.new((i==1) and 0 or ((i==2) and 0.5 or 1),0)
+  if i==1 then hud.Position=UDim2.fromOffset(10,10)
+  elseif i==2 then hud.Position=UDim2.new(0.5,0,0,10)
+  else hud.Position=UDim2.new(1,-10,0,10) end
+  hud.TextSize=S.vHudSize
+ end
+ applyHud()
  makeToggle(vp,"hud","hud_sub",S.vHud,function(v) S.vHud=v save() hud.Visible=v end)
+ makeToggle(vp,"hud_pos","hud_pos_sub",S.vHudPos,function(v) S.vHudPos=v save() end)
+ makeToggle(vp,"hud_time","hud_time_sub",S.vHudTime,function(v) S.vHudTime=v save() end)
+ makeSegment(vp,"hud_place",{"o_left","o_center","o_right"},S.vHudPlace,function(i) S.vHudPlace=i save() applyHud() end)
+ makeSlider(vp,"hud_size",10,20,1,S.vHudSize,function(v) S.vHudSize=v save() applyHud() end)
 
  task.spawn(function()
   while alive do
@@ -2688,7 +2881,17 @@ end)
     pcall(function() ping=math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue()).." ms" end)
     local total=0
     for _,n in pairs(allCounts) do total=total+n end
-    hud.Text=trf("hud_text",tostring(env.__ANTONIO_FPS or 0),ping,total,markCount())
+    local t=trf("hud_text",tostring(env.__ANTONIO_FPS or 0),ping,total,markCount())
+    if S.vHudPos then
+     local c=P.Character
+     local hr=c and c:FindFirstChild("HumanoidRootPart")
+     if hr then
+      local p=hr.Position
+      t=t.."  •  X "..math.floor(p.X).." Y "..math.floor(p.Y).." Z "..math.floor(p.Z)
+     end
+    end
+    if S.vHudTime then t=t.."  •  "..os.date("%H:%M:%S") end
+    hud.Text=t
    end
    task.wait(0.5)
   end
@@ -2724,7 +2927,7 @@ end)
  end))
 
  restorers[#restorers+1]=function()
-  V.fb=false V.fog=false V.time=false V.fov=false V.zoom=false V.col=false V.zlim=false
+  V.fb=false V.fog=false V.time=false V.fov=false V.zoom=false V.col=false V.bw=false V.zlim=false
   if fbOrig then pcall(function()
    Lighting.Brightness=fbOrig.Brightness Lighting.Ambient=fbOrig.Ambient Lighting.OutdoorAmbient=fbOrig.OutdoorAmbient
   end) end
@@ -2733,6 +2936,8 @@ end)
   if atmo then for _,a in ipairs(atmo) do pcall(function() a.obj.Density=a.density a.obj.Haze=a.haze end) end end
   if ccE then pcall(function() ccE:Destroy() end) end
   if zlOrig then pcall(function() P.CameraMaxZoomDistance=zlOrig end) end
+  skyApply(false)
+  if camOrig~=nil then pcall(function() P.CameraMode=camOrig end) end
   pcall(function() hud:Destroy() end)
   local cam=workspace.CurrentCamera
   if cam then
@@ -3065,7 +3270,7 @@ end)()
     {name="📏 "..L("Größe","Size"),value=#ls>0 and cut(table.concat(ls,"\n"),1000) or "–",inline=false},
     {name="🔗 "..L("Spiel-Link","Game link"),value="**[▶ "..L("Server beitreten","Join server").."]("..joinLink()..")**\nJobId `"..game.JobId.."`",inline=false},
    },
-   footer={text="Antonio Hub v4.8  •  discord.gg/saveegg"},
+   footer={text="Antonio Hub v4.9  •  discord.gg/saveegg"},
    timestamp=os.date("!%Y-%m-%dT%H:%M:%SZ"),
   }
  end
@@ -4650,10 +4855,10 @@ end)()
  end
 end)()
 
---// ---------------- PERFORMANCE (v4.0) ----------------
+--// ---------------- PERFORMANCE (v4.0, v4.9 erweitert) ----------------
 ;(function()
  local fp=scroller(newPage("perf"))
- local PF={part=false,fx=false,mat=false,tex=false,tree=false,hide=false,cap=false,capVal=S.pCap}
+ local PF={part=false,fx=false,mat=false,tex=false,tree=false,hide=false,cap=false,capVal=S.pCap,cast=false,mesh=false,snd=false,auto=S.pAutoBoost}
  local shadowOrig,qualOrig,volOrig,waterOrig
  local pOff={}
  local fxOrig=setmetatable({},{__mode="k"})
@@ -4661,6 +4866,9 @@ end)()
  local texOrig=setmetatable({},{__mode="k"})
  local treeOrig=setmetatable({},{__mode="k"})
  local hidOrig=setmetatable({},{__mode="k"})
+ local castOrig=setmetatable({},{__mode="k"})
+ local meshOrig=setmetatable({},{__mode="k"})
+ local sndOrig=setmetatable({},{__mode="k"})
  local tg={}
  local capSlider
  local hasCap=(type(setfpscap)=="function")
@@ -4682,6 +4890,31 @@ end)()
    if ch and o:IsDescendantOf(ch) then return end
    texOrig[o]=o.Transparency
    o.Transparency=1
+  end
+ end
+ -- v4.9: Teile werfen keinen Schatten mehr
+ local function castDo(o)
+  if o:IsA("BasePart") and o.CastShadow then
+   castOrig[o]=true
+   o.CastShadow=false
+  end
+ end
+ -- v4.9: MeshParts nutzen die Performance-Darstellung
+ local function meshDo(o)
+  if o:IsA("MeshPart") then
+   pcall(function()
+    if o.RenderFidelity~=Enum.RenderFidelity.Performance then
+     meshOrig[o]=o.RenderFidelity
+     o.RenderFidelity=Enum.RenderFidelity.Performance
+    end
+   end)
+  end
+ end
+ -- v4.9: Sounds in der Map stumm
+ local function sndDo(o)
+  if o:IsA("Sound") and o.Volume>0 and not o:IsDescendantOf(gui) then
+   sndOrig[o]=o.Volume
+   o.Volume=0
   end
  end
  -- v4.1: Bäume/Büsche ausblenden (Name des Teils oder der 3 Eltern-Objekte enthält ein Baum-Wort)
@@ -4733,29 +4966,44 @@ end)()
    end
   end)
  end
+ -- v4.9: Speicher aufraeumen (zeigt, wie viel MB frei wurden)
+ local function doGc(show)
+  task.spawn(function()
+   local before,after=0,0
+   pcall(function() before=Stats:GetTotalMemoryUsageMb() end)
+   pcall(function() collectgarbage("collect") end)
+   task.wait(0.6)
+   pcall(function() after=Stats:GetTotalMemoryUsageMb() end)
+   if show then notify(trf("gc_ok",math.max(0,math.floor(before-after))),C.good,true) end
+  end)
+ end
 
  --// Presets
  head(fp,"f_preset")
  local pg=new("Frame",{Size=UDim2.new(1,0,0,38),BackgroundTransparency=1,LayoutOrder=ord(fp)},fp)
- new("UIGridLayout",{CellSize=UDim2.new(0.5,-5,0,38),CellPadding=UDim2.fromOffset(10,10),SortOrder=Enum.SortOrder.LayoutOrder},pg)
+ new("UIGridLayout",{CellSize=UDim2.new(1/3,-7,0,38),CellPadding=UDim2.fromOffset(10,10),SortOrder=Enum.SortOrder.LayoutOrder},pg)
  local function applyList(list)
   for _,k in ipairs(list) do
    local t=tg[k]
    if t and not t.get() then t.set(true) end
   end
  end
+ local BOOST={"shadow","part","fx","tex","water","hide","qual"}
  makeButton(pg,"boost_preset","acc",function()
-  applyList({"shadow","part","fx","tex","water","hide","qual"})
+  applyList(BOOST)
  end,1)
+ makeButton(pg,"ext_preset",Color3.fromRGB(40,100,170),function()
+  applyList({"shadow","part","fx","tex","water","hide","qual","mat","tree","cast","mesh"})
+ end,2)
  makeButton(pg,"afk_preset",Color3.fromRGB(90,60,200),function()
-  applyList({"shadow","part","fx","tex","water","hide","qual","mute"})
+  applyList({"shadow","part","fx","tex","water","hide","qual","mute","wsnd"})
   if tg.cap and capSlider then
    PF.capVal=20
    capSlider.set(20,false)
    if tg.cap.get() then pcall(function() setfpscap(20) end) else tg.cap.set(true) end
   end
   applyList({"r3d"})
- end,2)
+ end,3)
  makeButton(fp,"reset_all","bad",function()
   for _,t in pairs(tg) do if t.get() then t.set(false) end end
   PF.capVal=S.pCap
@@ -4764,6 +5012,7 @@ end)()
 
  head(fp,"f_live")
  local live=makeLabelBox(fp,nil,nil,32)
+ local liveStats=makeLabelBox(fp,nil,nil,28)
 
  head(fp,"f_gfx")
  tg.shadow=makeToggle(fp,"shadows","shadows_sub",false,function(v)
@@ -4773,6 +5022,14 @@ end)()
   elseif shadowOrig~=nil then
    Lighting.GlobalShadows=shadowOrig
    shadowOrig=nil
+  end
+ end)
+ tg.cast=makeToggle(fp,"cast","cast_sub",false,function(v)
+  PF.cast=v
+  if v then
+   sweepMap("cast",castDo)
+  else
+   for o in pairs(castOrig) do pcall(function() o.CastShadow=true end) castOrig[o]=nil end
   end
  end)
  tg.part=makeToggle(fp,"part","part_sub",false,function(v)
@@ -4799,6 +5056,14 @@ end)()
    sweepMap("mat",matDo)
   else
    for o,m in pairs(matOrig) do pcall(function() o.Material=m end) matOrig[o]=nil end
+  end
+ end)
+ tg.mesh=makeToggle(fp,"mesh","mesh_sub",false,function(v)
+  PF.mesh=v
+  if v then
+   sweepMap("mesh",meshDo)
+  else
+   for o,f in pairs(meshOrig) do pcall(function() o.RenderFidelity=f end) meshOrig[o]=nil end
   end
  end)
  tg.tex=makeToggle(fp,"tex","tex_sub",false,function(v)
@@ -4839,13 +5104,16 @@ end)()
 
  -- neu hinzugekommene Objekte sofort mit behandeln
  conn(workspace.DescendantAdded:Connect(function(o)
-  if PF.part or PF.mat or PF.tex or PF.tree then
+  if PF.part or PF.mat or PF.tex or PF.tree or PF.cast or PF.mesh or PF.snd then
    task.defer(function()
     if not o.Parent then return end
     if PF.part then pcall(partDo,o) end
     if PF.mat then pcall(matDo,o) end
     if PF.tex then pcall(texDo,o) end
     if PF.tree then pcall(treeDo,o) end
+    if PF.cast then pcall(castDo,o) end
+    if PF.mesh then pcall(meshDo,o) end
+    if PF.snd then pcall(sndDo,o) end
    end)
   end
  end))
@@ -4902,25 +5170,76 @@ end)()
    end
   end)
  end)
+ tg.wsnd=makeToggle(fp,"wsnd","wsnd_sub",false,function(v)
+  PF.snd=v
+  if v then
+   sweepMap("snd",sndDo)
+  else
+   for o,vol in pairs(sndOrig) do pcall(function() o.Volume=vol end) sndOrig[o]=nil end
+  end
+ end)
  tg.r3d=makeToggle(fp,"render3d","render3d_sub",false,function(v)
   pcall(function() RS:Set3dRenderingEnabled(not v) end)
  end)
- makeLabelBox(fp,"f_tip",nil,76)
 
+ --// v4.9: Automatik & Speicher
+ head(fp,"f_auto")
+ makeToggle(fp,"autob","autob_sub",S.pAutoBoost,function(v)
+  PF.auto=v
+  S.pAutoBoost=v
+  save()
+ end)
+ makeSlider(fp,"autob_fps",10,60,5,S.pAutoFps,function(v) S.pAutoFps=v save() end,nil,function(v) return v.." FPS" end)
+ makeButton(fp,"gc_btn",Color3.fromRGB(40,100,170),function() doGc(true) end)
+ makeToggle(fp,"gc_auto","gc_auto_sub",S.pGc,function(v) S.pGc=v save() end)
+ makeSlider(fp,"gc_int",30,600,30,S.pGcInt,function(v) S.pGcInt=v save() end,nil,function(v) return v.." s" end)
+ makeLabelBox(fp,"f_tip",nil,100)
+
+ -- Hauptschleife: FPS-Statistik, Auto-Boost, Auto-Speicherbereinigung, Live-Anzeige
  task.spawn(function()
+  local hist={}
+  local lowCnt,autoDone=0,false
+  local lastGc=tick()
   while alive do
+   local f=env.__ANTONIO_FPS or 0
+   if f>0 then
+    hist[#hist+1]=f
+    if #hist>60 then table.remove(hist,1) end
+   end
+   -- Auto-Boost: 6 Sekunden lang unter der Schwelle -> Boost-Preset
+   if PF.auto and not autoDone and f>0 and f<S.pAutoFps then lowCnt=lowCnt+1 else lowCnt=0 end
+   if not PF.auto then autoDone=false end
+   if lowCnt>=12 then
+    autoDone=true
+    lowCnt=0
+    applyList(BOOST)
+    notify(trf("autob_msg",f),C.acc,true)
+   end
+   if S.pGc and tick()-lastGc>=S.pGcInt then
+    lastGc=tick()
+    doGc(false)
+   end
    if cur=="perf" then
     local ping,ram="-","-"
     pcall(function() ping=math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue()).." ms" end)
     pcall(function() ram=tostring(math.floor(Stats:GetTotalMemoryUsageMb())) end)
-    live.Text=trf("f_live_t",tostring(env.__ANTONIO_FPS or 0),ping,ram)
+    live.Text=trf("f_live_t",tostring(f),ping,ram)
+    if #hist>0 then
+     local sum,mn,mx=0,math.huge,0
+     for _,v in ipairs(hist) do
+      sum=sum+v
+      if v<mn then mn=v end
+      if v>mx then mx=v end
+     end
+     liveStats.Text=trf("f_stats_t",math.floor(sum/#hist+0.5),mn,mx)
+    end
    end
    task.wait(0.5)
   end
  end)
 
  restorers[#restorers+1]=function()
-  PF.part=false PF.fx=false PF.mat=false PF.tex=false PF.tree=false PF.hide=false
+  PF.part=false PF.fx=false PF.mat=false PF.tex=false PF.tree=false PF.hide=false PF.cast=false PF.mesh=false PF.snd=false
   pcall(function() RS:Set3dRenderingEnabled(true) end)
   if shadowOrig~=nil then pcall(function() Lighting.GlobalShadows=shadowOrig end) end
   if qualOrig then pcall(function() settings().Rendering.QualityLevel=qualOrig end) end
@@ -4932,11 +5251,14 @@ end)()
   for o,m in pairs(matOrig) do pcall(function() o.Material=m end) matOrig[o]=nil end
   for o,t in pairs(texOrig) do pcall(function() o.Transparency=t end) texOrig[o]=nil end
   for o,t in pairs(treeOrig) do pcall(function() o.Transparency=t end) treeOrig[o]=nil end
+  for o in pairs(castOrig) do pcall(function() o.CastShadow=true end) castOrig[o]=nil end
+  for o,f in pairs(meshOrig) do pcall(function() o.RenderFidelity=f end) meshOrig[o]=nil end
+  for o,vol in pairs(sndOrig) do pcall(function() o.Volume=vol end) sndOrig[o]=nil end
   for o in pairs(hidOrig) do pcall(function() o.LocalTransparencyModifier=0 end) hidOrig[o]=nil end
  end
 end)()
 
---// ---------------- TOOLS ----------------
+--// ---------------- TOOLS (v4.9 erweitert) ----------------
 do
  local tp=scroller(newPage("tools"))
  head(tp,"t_server")
@@ -4944,6 +5266,32 @@ do
  new("UIGridLayout",{CellSize=UDim2.new(0.5,-5,0,40),CellPadding=UDim2.fromOffset(10,10),SortOrder=Enum.SortOrder.LayoutOrder},tgrid)
  makeButton(tgrid,"hop",Color3.fromRGB(40,100,170),serverHop,1)
  makeButton(tgrid,"rejoin",Color3.fromRGB(150,60,80),rejoin,2)
+ makeSegment(tp,"hop_mode",{"hm_rand","hm_small","hm_full"},S.hopMode,function(i) S.hopMode=i save() end)
+
+ -- Server per JobId beitreten
+ do
+  local jf=new("Frame",{Size=UDim2.new(1,0,0,38),BackgroundColor3=C.item,LayoutOrder=ord(tp)},tp)
+  round(jf,10)
+  local jfs=stroke(jf,C.border,0.3)
+  local jBox=new("TextBox",{BackgroundTransparency=1,Position=UDim2.fromOffset(12,0),Size=UDim2.new(1,-24,1,0),Text="",PlaceholderColor3=C.sub,
+   TextColor3=C.txt,Font=Enum.Font.GothamMedium,TextSize=12,ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left,
+   TextTruncate=Enum.TextTruncate.AtEnd},jf)
+  reg(jBox,"hop_join","PlaceholderText")
+  jBox.Focused:Connect(function() tw(jfs,{Color=C.acc,Transparency=0}) end)
+  jBox.FocusLost:Connect(function() tw(jfs,{Color=C.border,Transparency=0.3}) end)
+  makeButton(tp,"hop_join_btn",Color3.fromRGB(90,60,200),function()
+   local id=(jBox.Text or ""):gsub("%s","")
+   if #id<20 or not id:match("^[%w%-]+$") then
+    setToolStatus(tr("hop_join_bad"))
+    return
+   end
+   HK.queueLoad()
+   setToolStatus(tr("srv_switch"))
+   local ok=pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId,id,P) end)
+   if not ok then setToolStatus(tr("srv_tpfail")) end
+  end)
+ end
+
  makeButton(tp,"copy_id",Color3.fromRGB(90,60,200),function()
   if setclipboard then
    pcall(setclipboard,game.JobId)
@@ -4952,6 +5300,36 @@ do
    setToolStatus(tr("copy_na"))
   end
  end)
+ local cgrid=new("Frame",{Size=UDim2.new(1,0,0,40),BackgroundTransparency=1,LayoutOrder=ord(tp)},tp)
+ new("UIGridLayout",{CellSize=UDim2.new(1/3,-7,0,40),CellPadding=UDim2.fromOffset(10,10),SortOrder=Enum.SortOrder.LayoutOrder},cgrid)
+ makeButton(cgrid,"copy_place",Color3.fromRGB(70,74,100),function()
+  if setclipboard then
+   pcall(setclipboard,tostring(game.PlaceId))
+   setToolStatus(tr("copy_place_ok"))
+  else
+   setToolStatus(tr("copy_na"))
+  end
+ end,1)
+ makeButton(cgrid,"copy_join",Color3.fromRGB(70,74,100),function()
+  if setclipboard then
+   pcall(setclipboard,'game:GetService("TeleportService"):TeleportToPlaceInstance('..game.PlaceId..',"'..game.JobId..'",game.Players.LocalPlayer)')
+   setToolStatus(tr("copy_join_ok"))
+  else
+   setToolStatus(tr("copy_na"))
+  end
+ end,2)
+ makeButton(cgrid,"copy_pos",Color3.fromRGB(70,74,100),function()
+  local c=P.Character
+  local hr=c and c:FindFirstChild("HumanoidRootPart")
+  if not hr then setToolStatus(tr("h_nochar")) return end
+  if setclipboard then
+   local p=hr.Position
+   pcall(setclipboard,string.format("Vector3.new(%.2f, %.2f, %.2f)",p.X,p.Y,p.Z))
+   setToolStatus(tr("copy_pos_ok"))
+  else
+   setToolStatus(tr("copy_na"))
+  end
+ end,3)
  -- v4.1: Pfade aller markierten Eier kopieren (zum Debuggen / Melden falscher Treffer)
  makeButton(tp,"paths_copy",Color3.fromRGB(70,74,100),function()
   local out={}
@@ -4972,6 +5350,96 @@ do
    setToolStatus(trf("paths_ok",#out))
   else
    setToolStatus(tr("copy_na"))
+  end
+ end)
+
+ --// Server-Info (Live)
+ head(tp,"t_info")
+ local infoL=makeLabelBox(tp,nil,nil,54)
+ task.spawn(function()
+  while alive do
+   if cur=="tools" then
+    local ping="-"
+    pcall(function() ping=math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue()).." ms" end)
+    local s=math.floor(workspace.DistributedGameTime)
+    local up
+    if s>=3600 then up=string.format("%d:%02d:%02d",math.floor(s/3600),math.floor(s/60)%60,s%60)
+    else up=string.format("%02d:%02d",math.floor(s/60),s%60) end
+    infoL.Text=trf("t_info_t",#Players:GetPlayers(),Players.MaxPlayers,ping,up,tostring(game.PlaceId),tostring(game.JobId):sub(-6))
+   end
+   task.wait(1)
+  end
+ end)
+
+ --// Automatik
+ head(tp,"t_auto")
+ makeToggle(tp,"t_rejoin","t_rejoin_sub",S.tAutoRejoin,function(v) S.tAutoRejoin=v save() end)
+ makeToggle(tp,"t_deathret","t_deathret_sub",S.tDeathRet,function(v) S.tDeathRet=v save() end)
+ makeToggle(tp,"t_hopempty","t_hopempty_sub",S.tHopEmpty,function(v) S.tHopEmpty=v save() end)
+ makeSlider(tp,"t_hopempty_sec",30,900,30,S.tHopEmptySec,function(v) S.tHopEmptySec=v save() end,nil,function(v) return v.." s" end)
+
+ -- Auto-Rejoin bei Verbindungsverlust / Kick
+ pcall(function()
+  local GSv=game:GetService("GuiService")
+  conn(GSv.ErrorMessageChanged:Connect(function(msg)
+   if S.tAutoRejoin and type(msg)=="string" and msg~="" then
+    notify(tr("t_rejoin_msg"),C.bad,true)
+    task.delay(3,function()
+     if alive and S.tAutoRejoin then rejoin() end
+    end)
+   end
+  end))
+ end)
+
+ -- Nach Tod zurueck zur letzten Position
+ do
+  local lastPos,frozen=nil,false
+  local function hook(ch)
+   local h=ch:WaitForChild("Humanoid",10)
+   if h then conn(h.Died:Connect(function() frozen=true end)) end
+  end
+  if P.Character then task.spawn(hook,P.Character) end
+  conn(P.CharacterAdded:Connect(function(ch)
+   local target=lastPos
+   frozen=false
+   task.spawn(hook,ch)
+   if not S.tDeathRet or not target then return end
+   local r=ch:WaitForChild("HumanoidRootPart",10)
+   if r and alive then
+    task.wait(0.6)
+    HK.moveTo(target+Vector3.new(0,3,0))
+    notify(tr("t_death_msg"),C.acc,true)
+   end
+  end))
+  task.spawn(function()
+   while alive do
+    local c=P.Character
+    local h=c and c:FindFirstChildOfClass("Humanoid")
+    local r=c and c:FindFirstChild("HumanoidRootPart")
+    if h and r and h.Health>0 and not frozen then lastPos=r.Position end
+    task.wait(0.5)
+   end
+  end)
+ end
+
+ -- Auto-Hop, wenn zu lange kein (aktiviertes) Ei im Server ist
+ task.spawn(function()
+  local lastEgg=tick()
+  while alive do
+   if not S.tHopEmpty then
+    lastEgg=tick()
+   else
+    local n=0
+    for _,c in pairs(lastCounts) do n=n+c end
+    if n>0 then
+     lastEgg=tick()
+    elseif tick()-lastEgg>=S.tHopEmptySec and not hopping then
+     lastEgg=tick()
+     notify(tr("t_hopempty_msg"),C.acc,true)
+     serverHop()
+    end
+   end
+   task.wait(2)
   end
  end)
 
@@ -5282,7 +5750,7 @@ do
  restorers[#restorers+1]=function() destroyMarker() end
 end
 
---// ---------------- EINSTELLUNGEN ----------------
+--// ---------------- EINSTELLUNGEN (v4.9 erweitert) ----------------
 do
  local sp=scroller(newPage("settings"))
  local customToggle
@@ -5314,6 +5782,11 @@ do
    end
    return
   end
+  -- v4.9: Panik-Taste (Ende) entlaedt den Hub sofort
+  if S.panicKey and i.UserInputType==Enum.UserInputType.Keyboard and i.KeyCode==Enum.KeyCode.End and not UIS:GetFocusedTextBox() then
+   closeHub()
+   return
+  end
   if gp then return end
   if i.KeyCode.Name==S.menuKey then main.Visible=not main.Visible end
  end))
@@ -5321,6 +5794,14 @@ do
   main.Position=UDim2.new(0.5,0,0.5,-WIN_H/2)
  end)
  makeToggle(sp,"s_tips","s_tips_sub",S.showTips,function(v) S.showTips=v save() applyTips() end)
+
+ --// v4.9: Menue-Verhalten
+ head(sp,"s_ui")
+ makeToggle(sp,"s_toast","s_toast_sub",S.toastOn,function(v) S.toastOn=v save() end)
+ makeSegment(sp,"s_toastpos",{"o_top","o_bottom"},S.toastPos,function(i) S.toastPos=i save() HK.applyToast() end)
+ makeToggle(sp,"s_uisound","s_uisound_sub",S.uiSound,function(v) S.uiSound=v save() end)
+ makeToggle(sp,"s_panic","s_panic_sub",S.panicKey,function(v) S.panicKey=v save() end)
+ makeToggle(sp,"s_starthid","s_starthid_sub",S.startHidden,function(v) S.startHidden=v save() end)
 
  head(sp,"s_design")
  local themeSeg
@@ -5543,6 +6024,27 @@ do
   task.delay(1.4,function() closeHub() end)
  end)
  makeButton(sp,"s_unload",Color3.fromRGB(70,74,100),function() closeHub() end)
+
+ --// v4.9: Info (Executor-Faehigkeiten)
+ head(sp,"s_info")
+ local capsL=makeLabelBox(sp,nil,nil,76)
+ do
+  local function yn(b) return b and "✓" or "✗" end
+  local exName="?"
+  pcall(function()
+   if type(identifyexecutor)=="function" then
+    local n,v=identifyexecutor()
+    exName=tostring(n or "?")..(v and (" "..tostring(v)) or "")
+   end
+  end)
+  local hasHttp=((syn and syn.request) or request or http_request or (http and http.request))~=nil
+  onLang(function()
+   capsL.Text=trf("s_caps_t",exName,yn(canFile),yn(Drawing~=nil),yn(hasHttp),yn(type(setclipboard)=="function"),
+    yn(type(setfpscap)=="function"),yn(type(queue_on_teleport)=="function"),yn((firesignal or getconnections)~=nil))
+  end)
+ end
+ local verL=makeLabelBox(sp,nil,nil,28)
+ onLang(function() verL.Text=tr("s_ver") end)
 end
 
 --// =========================================================
@@ -5740,4 +6242,7 @@ closeHub=function()
 end
 closeB.MouseButton1Click:Connect(function() closeHub() end)
 
-print("Antonio Hub v4.8 geladen")
+-- v4.9: Menue beim Start verstecken (Menue-Taste oeffnet es wieder)
+if S.startHidden then main.Visible=false end
+
+print("Antonio Hub v4.9 geladen")
