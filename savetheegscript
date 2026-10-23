@@ -1,4 +1,8 @@
---// ANTONIO HUB v5.0 FINAL  (Start | ESP | Anzahl | Teleport | Visuals | Notifier | Webhook | Spieler | Spieler ESP | Performance | Tools | Autofarm | Home | Einstellungen)
+--// ANTONIO HUB v5.1 FINAL  (Start | ESP | Anzahl | Teleport | Visuals | Notifier | Webhook | Spieler | Spieler ESP | Performance | Tools | Autofarm | Home | Einstellungen)
+--// v5.1: AUTOFARM STARK ERWEITERT (Quick-Event und Fuse-Timer bleiben wie sie sind)
+--//       Auto-Sammeln (Eier: naechstes / seltenstes, Mindest-Ei, Mutationen, Max-Entfernung, Sperre, zurueck zu Home), Auto-Interact (Prompts in Reichweite, Wortfilter),
+--//       Wegpunkt-Route (+ Server-Hop nach der Runde), Auto-Claim (Belohnungs-Buttons), Auto-Fuse, Sicherheit (Pause bei wenig Leben / Spielern in der Naehe),
+--//       Uebersicht mit Statistik + Status, Presets, Not-Aus (Taste X), "Nach Rejoin fortsetzen"
 --// v5.0: TELEPORT UND HOME NEU GEBAUT
 --//       Teleport: Ein Ziel-Hub mit Ziel-Typ Eier / Spieler / Orte (Home, Home-Spots, Wegpunkte, Spawn), Richtungspfeil relativ zur Kamera,
 --//              Filter (Nur aktive / Mutationen / Nur live), Zurück-Knopf (Position vor dem letzten Teleport), Hotkeys T / H / B, ganze Seite scrollbar
@@ -111,6 +115,12 @@ local S={
  toastOn=true,toastPos=1,uiSound=false,panicKey=true,startHidden=false,
  -- neu in v5.0 (Teleport / Home)
  tpMode=1,tpOnlyOn=false,tpOnlyMut=false,tpOnlyLive=false,tpKeys=false,homeRing=true,homeSaves={},
+ -- neu in v5.1 (Autofarm)
+ afCollect=false,afMode=1,afMin=1,afOnlyOn=true,afMut=false,afMaxDist=0,afDelay=0.8,afBlack=25,afInstant=true,afReturn=false,
+ afInteract=false,afIRadius=15,afICd=1.5,afIWords="",
+ afRoute=false,afRouteWait=3,afRouteRand=false,afRouteHop=false,
+ afClaim=false,afClaimInt=10,afClaimWords="claim,collect,free,reward,gift",
+ afFuse=false,afSafeHp=false,afSafeHpPct=30,afSafePl=false,afSafePlR=100,afKey=false,afResume=false,
 }
 do
  if canFile then
@@ -238,6 +248,8 @@ S.notifyMin=math.clamp(math.floor(S.notifyMin),1,#TYPES)
 S.countSort=math.clamp(math.floor(S.countSort),1,2)
 S.tpSort=math.clamp(math.floor(S.tpSort),1,2)
 S.notifyMode=math.clamp(math.floor(S.notifyMode),1,2)
+S.afMin=math.clamp(math.floor(S.afMin),1,#TYPES)
+S.afMode=math.clamp(math.floor(S.afMode),1,2)
 if not S.nfInit and next(S.notifyEggs)==nil then
  for i,ty in ipairs(TYPES) do if i>=S.notifyMin then S.notifyEggs[ty.text]=true end end
 end
@@ -618,7 +630,58 @@ add("a_clicks","Geklickt: %d","Clicked: %d")
 add("a_status_on","Auto Quick-Event an","Auto quick event on") add("a_status_off","Auto Quick-Event aus","Auto quick event off")
 add("a_clicked","Quick-Event geklickt (%d)","Quick event clicked (%d)")
 add("a_delay_set","Verzögerung: %ss","Delay: %ss")
-add("a_more","Weitere Autofarm-Module kommen demnächst.","More autofarm modules will go here soon.")
+add("af_over","Übersicht","Overview")
+add("af_stats_t","Laufzeit %s  •  Eier %d  •  Interaktionen %d\nClaims %d  •  Route-Stopps %d  •  Fuse %d  •  Quick-Klicks %d","Runtime %s  •  Eggs %d  •  Interactions %d\nClaims %d  •  Route stops %d  •  Fuse %d  •  Quick clicks %d")
+add("af_p_collect","Nur sammeln","Collect only") add("af_p_afk","AFK-Farm","AFK farm") add("af_p_stop","Alles stoppen","Stop everything")
+add("af_stopped","Alle Farm-Module gestoppt","All farm modules stopped")
+add("af_s_off","Alle neuen Farm-Module sind aus.","All new farm modules are off.")
+add("af_s_idle","Wartet auf passende Eier...","Waiting for matching eggs...")
+add("af_s_collect","Sammle %s (%d m)","Collecting %s (%d m)")
+add("af_s_route","Route: Punkt %d/%d","Route: point %d/%d")
+add("af_s_fuse","Fuse-Maschine...","Fuse machine...")
+add("af_s_blocked","Pausiert: %s","Paused: %s")
+add("af_b_dead","Charakter tot oder fehlt","Character dead or missing")
+add("af_b_hp","Leben zu niedrig","Health too low")
+add("af_b_pl","Spieler in der Nähe","Player nearby")
+add("af_h_collect","Auto-Sammeln (Eier)","Auto collect (eggs)")
+add("af_collect","Auto-Sammeln","Auto collect") add("af_collect_sub","Teleportiert zum Ei und löst den Prompt automatisch aus","Teleports to the egg and triggers its prompt automatically")
+add("af_mode","Ziel-Auswahl","Target selection") add("af_m_near","Nächstes","Nearest") add("af_m_rare","Seltenstes zuerst","Rarest first")
+add("af_min","Ab Ei","From egg")
+add("af_onlyon","Nur ESP-aktive Eier","Only ESP-enabled eggs") add("af_onlyon_sub","Nur Sorten, die im ESP-Tab eingeschaltet sind","Only types switched on in the ESP tab")
+add("af_mut","Nur Mutationen","Mutations only") add("af_mut_sub","Nur Rainbow-, Diamond-, Gold- und mutierte Eier","Only Rainbow, Diamond, Gold and mutated eggs")
+add("af_maxd","Max. Entfernung","Max. distance")
+add("af_cdelay","Pause nach dem Sammeln","Pause after collecting")
+add("af_black","Sperre nach Versuch","Lock after attempt")
+add("af_instant","Prompt sofort auslösen","Trigger prompt instantly") add("af_instant_sub","Setzt die Haltezeit des Prompts kurz auf 0","Briefly sets the prompt hold time to 0")
+add("af_return","Danach zu Home","Go home afterwards") add("af_return_sub","Teleportiert nach jedem Ei zu deinem Home (Home-Tab)","Teleports to your home after every egg (Home tab)")
+add("af_collect_info","Eier im Home-Radius werden ignoriert. Eier ohne Prompt werden kurz gesperrt. Die Teleport-Einstellungen (Schrittweite, Halten) gelten auch hier.","Eggs inside the home radius are ignored. Eggs without a prompt are locked briefly. The teleport settings (step size, hold) apply here too.")
+add("af_h_inter","Auto-Interact","Auto interact")
+add("af_inter","Auto-Interact","Auto interact") add("af_inter_sub","Löst alle Prompts in Reichweite automatisch aus","Triggers every prompt in range automatically")
+add("af_iradius","Reichweite","Range") add("af_icd","Pause pro Prompt","Pause per prompt")
+add("af_iwords","Filter: Wörter mit Komma getrennt (leer = alle)...","Filter: words separated by commas (empty = all)...")
+add("af_inter_info","Mit Filter, z. B. „collect, open“, werden nur passende Prompts ausgelöst. Ohne Filter wird jeder Prompt in Reichweite benutzt.","With a filter such as “collect, open” only matching prompts are triggered. Without a filter every prompt in range is used.")
+add("af_h_route","Wegpunkt-Route","Waypoint route")
+add("af_route","Route ablaufen","Run route") add("af_route_sub","Teleportiert der Reihe nach zu deinen Wegpunkten (Spieler-Tab)","Teleports through your waypoints in order (Player tab)")
+add("af_rwait","Wartezeit pro Punkt","Wait per point")
+add("af_rrand","Zufällige Reihenfolge","Random order") add("af_rrand_sub","Wegpunkte in zufälliger Reihenfolge besuchen","Visit waypoints in random order")
+add("af_rhop","Nach der Runde Server wechseln","Hop server after the round") add("af_rhop_sub","Nach dem letzten Wegpunkt Server Hop (Modus im Tools-Tab)","Server hop after the last waypoint (mode in the Tools tab)")
+add("af_route_n","Wegpunkte in diesem Spiel: %d (Speichern im Spieler-Tab)","Waypoints in this game: %d (save them in the Player tab)")
+add("af_hop_msg","Route fertig – wechsle Server","Route finished – switching server")
+add("af_h_claim","Auto-Claim","Auto claim")
+add("af_claim","Auto-Claim","Auto claim") add("af_claim_sub","Klickt Belohnungs-Buttons (Claim, Collect, Free ...)","Clicks reward buttons (claim, collect, free ...)")
+add("af_cint","Prüf-Intervall","Check interval")
+add("af_cwords","Wörter auf Buttons, mit Komma getrennt...","Words on buttons, separated by commas...")
+add("af_claim_info","Jeder Button wird höchstens alle 30 Sekunden geklickt. Passe die Wörter an dein Spiel an.","Each button is clicked at most every 30 seconds. Adjust the words to your game.")
+add("af_h_fuse","Auto-Fuse","Auto fuse")
+add("af_fuse","Fuse-Maschine automatisch benutzen","Use fuse machine automatically") add("af_fuse_sub","Sobald der Fuse-Timer bereit ist (Timer muss an sein)","As soon as the fuse timer is ready (timer must be on)")
+add("af_fuse_info","Teleportiert zur Maschine und löst sie aus. Startet der Timer danach nicht, wird nach 2 Minuten neu versucht.","Teleports to the machine and triggers it. If the timer does not start afterwards, it retries after 2 minutes.")
+add("af_h_safe","Sicherheit","Safety")
+add("af_shp","Pause bei wenig Leben","Pause on low health") add("af_shp_sub","Alle Farm-Module pausieren unter der Schwelle","All farm modules pause below the threshold")
+add("af_shp_pct","Leben-Schwelle","Health threshold")
+add("af_spl","Pause bei Spielern in der Nähe","Pause when players are near") add("af_spl_sub","Pausiert, solange ein anderer Spieler im Radius ist","Pauses while another player is inside the radius")
+add("af_spl_r","Radius","Radius")
+add("af_key","Not-Aus-Hotkey (X)","Emergency stop hotkey (X)") add("af_key_sub","Taste X stoppt alle Farm-Module sofort","Key X stops all farm modules instantly")
+add("af_resume","Nach Rejoin fortsetzen","Resume after rejoin") add("af_resume_sub","Aktive Module starten nach Server-Wechsel wieder (mit Auto-Execute)","Active modules start again after a server switch (with auto execute)")
 -- Fuse-Timer
 add("fz_head","Fuse-Maschine","Fuse machine")
 add("fz_on","Fuse-Timer","Fuse timer") add("fz_on_sub","Overlay mit Cooldown – startet beim Benutzen der Maschine","Overlay with cooldown – starts when you use the machine")
@@ -710,7 +773,7 @@ add("s_reset_msg","Zurückgesetzt – bitte Skript neu ausführen","Reset – pl
 add("s_unload","Hub entladen","Unload hub")
 add("s_info","Info","Info")
 add("s_caps_t","Executor: %s\nDateien %s  •  Drawing %s  •  HTTP %s  •  Zwischenablage %s\nFPS-Limit %s  •  Auto-Execute %s  •  Klick-Signale %s","Executor: %s\nFiles %s  •  Drawing %s  •  HTTP %s  •  Clipboard %s\nFPS cap %s  •  Auto execute %s  •  Click signals %s")
-add("s_ver","Antonio Hub v5.0  •  discord.gg/saveegg","Antonio Hub v5.0  •  discord.gg/saveegg")
+add("s_ver","Antonio Hub v5.1  •  discord.gg/saveegg","Antonio Hub v5.1  •  discord.gg/saveegg")
 
 local langFns,textObjs={}, {}
 local function tr(k) local t=D[S.lang] return (t and t[k]) or D.de[k] or k end
@@ -1469,6 +1532,10 @@ local function press(b,coords)
   end)
  end
 end
+
+HK.press=press
+HK.clickTarget=clickTarget
+HK.guiVisible=visible
 
 task.spawn(function()
  while alive do
@@ -3486,7 +3553,7 @@ end)()
     {name="📏 "..L("Größe","Size"),value=#ls>0 and cut(table.concat(ls,"\n"),1000) or "–",inline=false},
     {name="🔗 "..L("Spiel-Link","Game link"),value="**[▶ "..L("Server beitreten","Join server").."]("..joinLink()..")**\nJobId `"..game.JobId.."`",inline=false},
    },
-   footer={text="Antonio Hub v5.0  •  discord.gg/saveegg"},
+   footer={text="Antonio Hub v5.1  •  discord.gg/saveegg"},
    timestamp=os.date("!%Y-%m-%dT%H:%M:%SZ"),
   }
  end
@@ -5759,9 +5826,478 @@ do
  makeLabelBox(tp,"sweep_info",nil,52)
 end
 
+--// ---------------- AUTOFARM-MODULE (v5.1) ----------------
+-- Auto-Sammeln (Eier), Auto-Interact, Wegpunkt-Route (+ Server-Hop), Auto-Claim, Auto-Fuse, Sicherheit, Statistik, Not-Aus.
+-- Quick-Event und Fuse-Timer bleiben unveraendert im Autofarm-Block darunter. Die Module werden dort per HK.farmTop / HK.farmMore eingebaut.
+do
+ local FM={t0=tick(),eggs=0,interacts=0,claims=0,stops=0,fuses=0,black={},tg={},block=nil,lastTargetT=0,routeIdx=0,byType={},lastClaim=0}
+
+ -- ohne "Nach Rejoin fortsetzen" starten alle Farm-Module ausgeschaltet
+ if not S.afResume then
+  S.afCollect=false S.afInteract=false S.afRoute=false S.afClaim=false S.afFuse=false
+ end
+
+ local function stopAll()
+  for _,t in pairs(FM.tg) do if t.get() then t.set(false) end end
+  pcall(modSet,"quick",false)
+  notify(tr("af_stopped"),C.bad,true)
+ end
+ local function setOnly(list)
+  for _,t in pairs(FM.tg) do if t.get() then t.set(false) end end
+  for _,k in ipairs(list) do
+   if FM.tg[k] then FM.tg[k].set(true) end
+  end
+ end
+
+ local function waitTp()
+  local t0=tick()
+  while alive and tick()<(HK.tpUntil or 0) and tick()-t0<8 do task.wait(0.1) end
+ end
+ local function hostPart(pr)
+  local p=pr.Parent
+  if p and p:IsA("Attachment") then p=p.Parent end
+  if p and p:IsA("BasePart") then return p end
+  return nil
+ end
+ local function splitWords(s)
+  local out={}
+  for w in string.gmatch(string.lower(s or ""),"[^,]+") do
+   w=w:gsub("^%s+",""):gsub("%s+$","")
+   if w~="" then out[#out+1]=w end
+  end
+  return out
+ end
+ local function promptMatches(pr,words)
+  if #words==0 then return true end
+  local t=string.lower((pr.ObjectText or "").." "..(pr.ActionText or "").." "..(pr.Parent and pr.Parent.Name or ""))
+  for _,w in ipairs(words) do
+   if t:find(w,1,true) then return true end
+  end
+  return false
+ end
+
+ -- Prompt ausloesen: bevorzugt fireproximityprompt, sonst Taste halten
+ local function firePrompt(pr)
+  if not pr or not pr.Parent then return false end
+  local old
+  if S.afInstant then
+   pcall(function() old=pr.HoldDuration pr.HoldDuration=0 end)
+  end
+  local ok
+  if type(fireproximityprompt)=="function" then
+   ok=pcall(fireproximityprompt,pr)
+  else
+   ok=pcall(function()
+    local VIM=game:GetService("VirtualInputManager")
+    local key=pr.KeyboardKeyCode
+    if key==Enum.KeyCode.Unknown then key=Enum.KeyCode.E end
+    VIM:SendKeyEvent(true,key,false,game)
+    task.wait(math.max(pr.HoldDuration,0)+0.15)
+    VIM:SendKeyEvent(false,key,false,game)
+   end)
+  end
+  if old then task.delay(0.3,function() pcall(function() pr.HoldDuration=old end) end) end
+  return ok
+ end
+
+ -- Prompt eines Eis finden (im Ei-Objekt, sonst naechster Prompt im Umkreis)
+ local function promptFor(e)
+  if e.obj and e.obj.Parent then
+   local ok,pr=pcall(function() return e.obj:FindFirstChildWhichIsA("ProximityPrompt",true) end)
+   if ok and pr then return pr end
+  end
+  local best,bd
+  local list={}
+  for pr in pairs(prompts) do list[#list+1]=pr end
+  for _,pr in ipairs(list) do
+   if pr.Parent and pr.Enabled then
+    local part=hostPart(pr)
+    if part then
+     local d=(part.Position-e.pos).Magnitude
+     if d<15 and (not bd or d<bd) then best,bd=pr,d end
+    end
+   end
+  end
+  return best
+ end
+
+ local function statusText()
+  if FM.block and (S.afCollect or S.afRoute or S.afInteract or S.afFuse) then
+   return trf("af_s_blocked",tr(FM.block))
+  end
+  local parts={}
+  if S.afCollect then parts[#parts+1]=FM.stC or tr("af_s_idle") end
+  if S.afRoute and FM.stR then parts[#parts+1]=FM.stR end
+  if S.afFuse and FM.stF then parts[#parts+1]=FM.stF end
+  if #parts==0 then return tr("af_s_off") end
+  return table.concat(parts,"  |  ")
+ end
+
+ --// ---------- Oberer Bereich: Uebersicht + Presets ----------
+ HK.farmTop=function(fp)
+  head(fp,"af_over")
+  FM.statLbl=makeLabelBox(fp,nil,nil,44)
+  FM.stLbl=makeLabelBox(fp,nil,nil,30)
+  local g=new("Frame",{Size=UDim2.new(1,0,0,38),BackgroundTransparency=1,LayoutOrder=ord(fp)},fp)
+  new("UIGridLayout",{CellSize=UDim2.new(1/3,-7,0,38),CellPadding=UDim2.fromOffset(10,10),SortOrder=Enum.SortOrder.LayoutOrder},g)
+  makeButton(g,"af_p_collect","acc",function()
+   pcall(modSet,"quick",false)
+   setOnly({"collect"})
+  end,1)
+  makeButton(g,"af_p_afk",Color3.fromRGB(90,60,200),function()
+   setOnly({"collect","route","claim"})
+   pcall(modSet,"quick",true)
+  end,2)
+  makeButton(g,"af_p_stop","bad",stopAll,3)
+ end
+
+ --// ---------- Unterer Bereich: alle neuen Module ----------
+ HK.farmMore=function(fp)
+  local function wordBox(field,phKey)
+   local f=new("Frame",{Size=UDim2.new(1,0,0,38),BackgroundColor3=C.item,LayoutOrder=ord(fp)},fp)
+   round(f,10)
+   local fs=stroke(f,C.border,0.3)
+   local tb=new("TextBox",{BackgroundTransparency=1,Position=UDim2.fromOffset(12,0),Size=UDim2.new(1,-24,1,0),Text=S[field],PlaceholderColor3=C.sub,
+    TextColor3=C.txt,Font=Enum.Font.GothamMedium,TextSize=12,ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left,
+    TextTruncate=Enum.TextTruncate.AtEnd},f)
+   reg(tb,phKey,"PlaceholderText")
+   tb.Focused:Connect(function() tw(fs,{Color=C.acc,Transparency=0}) end)
+   tb.FocusLost:Connect(function()
+    tw(fs,{Color=C.border,Transparency=0.3})
+    S[field]=tb.Text:sub(1,120)
+    save()
+   end)
+  end
+
+  --// Auto-Sammeln
+  head(fp,"af_h_collect")
+  FM.tg.collect=makeToggle(fp,"af_collect","af_collect_sub",S.afCollect,function(v) S.afCollect=v save() end)
+  makeSegment(fp,"af_mode",{"af_m_near","af_m_rare"},S.afMode,function(i) S.afMode=i save() end)
+  local minLbl
+  local function minText() return (TYPES[S.afMin].name:gsub(" Egg","")) end
+  minLbl=makeStepper(fp,"af_min",minText(),function(dir)
+   S.afMin=math.clamp(S.afMin+dir,1,#TYPES)
+   minLbl.TextColor3=TYPES[S.afMin].color
+   save()
+   return minText()
+  end)
+  minLbl.TextColor3=TYPES[S.afMin].color
+  makeToggle(fp,"af_onlyon","af_onlyon_sub",S.afOnlyOn,function(v) S.afOnlyOn=v save() end)
+  makeToggle(fp,"af_mut","af_mut_sub",S.afMut,function(v) S.afMut=v save() end)
+  makeSlider(fp,"af_maxd",0,10000,250,S.afMaxDist,function(v) S.afMaxDist=v save() end,nil,function(v)
+   if v<=0 then return tr("s_inf") end
+   return v.." m"
+  end)
+  makeSlider(fp,"af_cdelay",0.2,5,0.1,S.afDelay,function(v) S.afDelay=v save() end,nil,function(v) return v.." s" end)
+  makeSlider(fp,"af_black",5,120,5,S.afBlack,function(v) S.afBlack=v save() end,nil,function(v) return v.." s" end)
+  makeToggle(fp,"af_instant","af_instant_sub",S.afInstant,function(v) S.afInstant=v save() end)
+  makeToggle(fp,"af_return","af_return_sub",S.afReturn,function(v) S.afReturn=v save() end)
+  makeLabelBox(fp,"af_collect_info",nil,64)
+
+  --// Auto-Interact
+  head(fp,"af_h_inter")
+  FM.tg.inter=makeToggle(fp,"af_inter","af_inter_sub",S.afInteract,function(v) S.afInteract=v save() end)
+  makeSlider(fp,"af_iradius",5,60,1,S.afIRadius,function(v) S.afIRadius=v save() end,nil,function(v) return v.." m" end)
+  makeSlider(fp,"af_icd",0.5,10,0.5,S.afICd,function(v) S.afICd=v save() end,nil,function(v) return v.." s" end)
+  wordBox("afIWords","af_iwords")
+  makeLabelBox(fp,"af_inter_info",nil,52)
+
+  --// Wegpunkt-Route
+  head(fp,"af_h_route")
+  FM.tg.route=makeToggle(fp,"af_route","af_route_sub",S.afRoute,function(v) S.afRoute=v save() end)
+  makeSlider(fp,"af_rwait",1,30,1,S.afRouteWait,function(v) S.afRouteWait=v save() end,nil,function(v) return v.." s" end)
+  makeToggle(fp,"af_rrand","af_rrand_sub",S.afRouteRand,function(v) S.afRouteRand=v save() end)
+  makeToggle(fp,"af_rhop","af_rhop_sub",S.afRouteHop,function(v) S.afRouteHop=v save() end)
+  FM.routeLbl=makeLabelBox(fp,nil,nil,30)
+
+  --// Auto-Claim
+  head(fp,"af_h_claim")
+  FM.tg.claim=makeToggle(fp,"af_claim","af_claim_sub",S.afClaim,function(v) S.afClaim=v save() end)
+  makeSlider(fp,"af_cint",3,60,1,S.afClaimInt,function(v) S.afClaimInt=v save() end,nil,function(v) return v.." s" end)
+  wordBox("afClaimWords","af_cwords")
+  makeLabelBox(fp,"af_claim_info",nil,52)
+
+  --// Auto-Fuse
+  head(fp,"af_h_fuse")
+  FM.tg.fuse=makeToggle(fp,"af_fuse","af_fuse_sub",S.afFuse,function(v) S.afFuse=v save() end)
+  makeLabelBox(fp,"af_fuse_info",nil,52)
+
+  --// Sicherheit
+  head(fp,"af_h_safe")
+  makeToggle(fp,"af_shp","af_shp_sub",S.afSafeHp,function(v) S.afSafeHp=v save() end)
+  makeSlider(fp,"af_shp_pct",10,90,5,S.afSafeHpPct,function(v) S.afSafeHpPct=v save() end,nil,function(v) return v.."%" end)
+  makeToggle(fp,"af_spl","af_spl_sub",S.afSafePl,function(v) S.afSafePl=v save() end)
+  makeSlider(fp,"af_spl_r",20,500,10,S.afSafePlR,function(v) S.afSafePlR=v save() end,nil,function(v) return v.." m" end)
+  makeToggle(fp,"af_key","af_key_sub",S.afKey,function(v) S.afKey=v save() end)
+  makeToggle(fp,"af_resume","af_resume_sub",S.afResume,function(v) S.afResume=v save() end)
+ end
+
+ --// ---------- Not-Aus-Hotkey ----------
+ conn(UIS.InputBegan:Connect(function(i,gp)
+  if gp or not S.afKey or i.UserInputType~=Enum.UserInputType.Keyboard or UIS:GetFocusedTextBox() then return end
+  if i.KeyCode==Enum.KeyCode.X then stopAll() end
+ end))
+
+ --// ---------- Aufsicht: Pausengruende (tot, wenig Leben, Spieler in der Naehe) ----------
+ task.spawn(function()
+  while alive do
+   local reason=nil
+   local c=P.Character
+   local hum=c and c:FindFirstChildOfClass("Humanoid")
+   local hrp=c and c:FindFirstChild("HumanoidRootPart")
+   if not (hum and hrp) or hum.Health<=0 then
+    reason="af_b_dead"
+   elseif S.afSafeHp and hum.MaxHealth>0 and hum.Health/hum.MaxHealth*100<S.afSafeHpPct then
+    reason="af_b_hp"
+   elseif S.afSafePl then
+    for _,pl in ipairs(Players:GetPlayers()) do
+     if pl~=P then
+      local ph=pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
+      if ph and (ph.Position-hrp.Position).Magnitude<=S.afSafePlR then
+       reason="af_b_pl"
+       break
+      end
+     end
+    end
+   end
+   FM.block=reason
+   task.wait(0.4)
+  end
+ end)
+
+ --// ---------- Auto-Sammeln ----------
+ task.spawn(function()
+  local lastPurge=tick()
+  while alive do
+   task.wait(0.3)
+   if S.afCollect and not FM.block then
+    local c=P.Character
+    local hrp=c and c:FindFirstChild("HumanoidRootPart")
+    if hrp then
+     local now=tick()
+     if now-lastPurge>60 then
+      lastPurge=now
+      for k,t in pairs(FM.black) do if t<now then FM.black[k]=nil end end
+     end
+     local bestK,bestE,bestD
+     for k,e in pairs(lastTargets) do
+      local ty=TYPES[e.ti]
+      if e.ti>=S.afMin and (not S.afOnlyOn or ty.on) and (not S.afMut or HK.isMut(e)) and (FM.black[k] or 0)<now then
+       local d=(e.pos-hrp.Position).Magnitude
+       if S.afMaxDist<=0 or d<=S.afMaxDist then
+        local better
+        if not bestE then better=true
+        elseif S.afMode==2 then better=(e.ti>bestE.ti) or (e.ti==bestE.ti and d<bestD)
+        else better=d<bestD end
+        if better then bestK,bestE,bestD=k,e,d end
+       end
+      end
+     end
+     if bestE then
+      FM.lastTargetT=now
+      FM.stC=trf("af_s_collect",TYPES[bestE.ti].name,math.floor(bestD))
+      HK.moveTo(bestE.pos+Vector3.new(0,3,0))
+      waitTp()
+      if alive and S.afCollect and not FM.block then
+       local ee=lastTargets[bestK]
+       if ee then
+        local pr=promptFor(ee)
+        if pr and firePrompt(pr) then
+         FM.eggs=FM.eggs+1
+         FM.byType[ee.ti]=(FM.byType[ee.ti] or 0)+1
+         FM.black[bestK]=tick()+S.afBlack
+        else
+         FM.black[bestK]=tick()+8
+        end
+        task.wait(S.afDelay)
+        if S.afReturn then
+         local h=getHome()
+         if h then
+          HK.moveTo(Vector3.new(h.x,h.y+2,h.z))
+          waitTp()
+         end
+        end
+       end
+      end
+     else
+      FM.stC=nil
+     end
+    end
+   end
+  end
+ end)
+
+ --// ---------- Auto-Interact ----------
+ task.spawn(function()
+  local cd=setmetatable({},{__mode="k"})
+  while alive do
+   task.wait(0.5)
+   if S.afInteract and not FM.block then
+    local c=P.Character
+    local hrp=c and c:FindFirstChild("HumanoidRootPart")
+    if hrp then
+     local now=tick()
+     local words=splitWords(S.afIWords)
+     local list={}
+     for pr in pairs(prompts) do list[#list+1]=pr end
+     for _,pr in ipairs(list) do
+      if not alive or not S.afInteract then break end
+      if pr.Parent and pr.Enabled and (cd[pr] or 0)<now then
+       local part=hostPart(pr)
+       if part and (part.Position-hrp.Position).Magnitude<=S.afIRadius and promptMatches(pr,words) then
+        cd[pr]=now+S.afICd
+        if firePrompt(pr) then FM.interacts=FM.interacts+1 end
+       end
+      end
+     end
+    end
+   end
+  end
+ end)
+
+ --// ---------- Wegpunkt-Route ----------
+ task.spawn(function()
+  while alive do
+   task.wait(0.5)
+   if S.afRoute and not FM.block then
+    local list=S.wps[homeKey]
+    if type(list)=="table" and #list>0 then
+     if not S.afCollect or tick()-FM.lastTargetT>2.5 then
+      local idx
+      if S.afRouteRand then
+       idx=math.random(1,#list)
+      else
+       FM.routeIdx=(FM.routeIdx % #list)+1
+       idx=FM.routeIdx
+      end
+      local w=list[idx]
+      if w then
+       FM.stR=trf("af_s_route",idx,#list)
+       HK.moveTo(Vector3.new(w.x,w.y+3,w.z))
+       waitTp()
+       FM.stops=FM.stops+1
+       -- Wartezeit am Punkt: wird abgebrochen, sobald das Auto-Sammeln ein Ei findet
+       local t0=tick()
+       while alive and S.afRoute and tick()-t0<S.afRouteWait do
+        if S.afCollect and tick()-FM.lastTargetT<1 then break end
+        task.wait(0.2)
+       end
+       if S.afRouteHop and not S.afRouteRand and idx==#list and not hopping then
+        notify(tr("af_hop_msg"),C.acc,true)
+        serverHop()
+        task.wait(8)
+       end
+      end
+     end
+    else
+     FM.stR=nil
+    end
+   else
+    FM.stR=nil
+   end
+  end
+ end)
+
+ --// ---------- Auto-Claim ----------
+ task.spawn(function()
+  local pgui=P:WaitForChild("PlayerGui")
+  local cdc=setmetatable({},{__mode="k"})
+  while alive do
+   task.wait(1)
+   if S.afClaim and tick()-FM.lastClaim>=S.afClaimInt then
+    FM.lastClaim=tick()
+    local words=splitWords(S.afClaimWords)
+    if #words>0 and HK.press then
+     local d=pgui:GetDescendants()
+     for i=1,#d do
+      if not alive or not S.afClaim then break end
+      local o=d[i]
+      if (o:IsA("TextButton") or o:IsA("TextLabel")) and o.Text~="" and #o.Text<=30 then
+       local t=(o.Text:gsub("<[^>]+>","")):lower()
+       local hit=false
+       for _,w in ipairs(words) do
+        if t:find(w,1,true) then hit=true break end
+       end
+       local now=tick()
+       if hit and (cdc[o] or 0)<now and HK.guiVisible(o) then
+        cdc[o]=now+30
+        pcall(HK.press,HK.clickTarget(o),false)
+        FM.claims=FM.claims+1
+       end
+      end
+      if i%300==0 then task.wait() end
+     end
+    end
+   end
+  end
+ end)
+
+ --// ---------- Auto-Fuse ----------
+ task.spawn(function()
+  local lastTry=0
+  while alive do
+   task.wait(2)
+   if S.afFuse and S.fuseOn and not FM.block and HK.fuseLeft and HK.fuseLeft()==0 and tick()-lastTry>120 then
+    local c=P.Character
+    local hrp=c and c:FindFirstChild("HumanoidRootPart")
+    local best,bd
+    if hrp then
+     local list={}
+     for pr in pairs(prompts) do list[#list+1]=pr end
+     for _,pr in ipairs(list) do
+      if pr.Parent and pr.Enabled then
+       local t=((pr.ObjectText or "").." "..(pr.ActionText or "")):lower()
+       if t:find("fuse",1,true) or t:find("fusion",1,true) or t:find("maschin",1,true) or t:find("machine",1,true) then
+        local part=hostPart(pr)
+        if part then
+         local d=(part.Position-hrp.Position).Magnitude
+         if not bd or d<bd then best,bd=pr,d end
+        end
+       end
+      end
+     end
+    end
+    if best then
+     lastTry=tick()
+     FM.stF=tr("af_s_fuse")
+     local part=hostPart(best)
+     if part then
+      HK.moveTo(part.Position+Vector3.new(0,3,2))
+      waitTp()
+      if firePrompt(best) then FM.fuses=FM.fuses+1 end
+     end
+     task.delay(8,function() FM.stF=nil end)
+    end
+   end
+  end
+ end)
+
+ --// ---------- Anzeige ----------
+ task.spawn(function()
+  while alive do
+   if cur=="farm" then
+    local s=math.floor(tick()-FM.t0)
+    local ts
+    if s>=3600 then ts=string.format("%d:%02d:%02d",math.floor(s/3600),math.floor(s/60)%60,s%60)
+    else ts=string.format("%02d:%02d",math.floor(s/60),s%60) end
+    if FM.statLbl then
+     FM.statLbl.Text=trf("af_stats_t",ts,FM.eggs,FM.interacts,FM.claims,FM.stops,FM.fuses,quickClicks)
+    end
+    if FM.stLbl then FM.stLbl.Text=statusText() end
+    if FM.routeLbl then
+     local l=S.wps[homeKey]
+     FM.routeLbl.Text=trf("af_route_n",type(l)=="table" and #l or 0)
+    end
+   end
+   task.wait(0.5)
+  end
+ end)
+end
+
 --// ---------------- AUTOFARM ----------------
 do
  local fp=scroller(newPage("farm"))
+ HK.farmTop(fp)
  head(fp,"a_head")
  makeToggle(fp,"a_on","a_on_sub",false,nil,nil,"quick")
 
@@ -5806,6 +6342,8 @@ do
   save()
   notify(tr("fz_started"),C.good,true)
  end
+ HK.fuseStart=fuseStart
+ HK.fuseLeft=fuseLeft
  makeToggle(fp,"fz_on","fz_on_sub",S.fuseOn,function(v) S.fuseOn=v save() fz.Visible=v end)
  makeSlider(fp,"fz_min",5,120,5,S.fuseCD,function(v) S.fuseCD=v save() end,nil,function(v) return v.." min" end)
  local fzg=new("Frame",{Size=UDim2.new(1,0,0,38),BackgroundTransparency=1,LayoutOrder=ord(fp)},fp)
@@ -5878,7 +6416,7 @@ do
  end)
  restorers[#restorers+1]=function() pcall(function() fz:Destroy() end) end
 
- makeLabelBox(fp,"a_more",nil,52)
+ HK.farmMore(fp)
 
  task.spawn(function()
   while alive do
@@ -6576,4 +7114,4 @@ closeB.MouseButton1Click:Connect(function() closeHub() end)
 -- v4.9: Menue beim Start verstecken (Menue-Taste oeffnet es wieder)
 if S.startHidden then main.Visible=false end
 
-print("Antonio Hub v5.0 geladen")
+print("Antonio Hub v5.1 geladen")
