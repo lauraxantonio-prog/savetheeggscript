@@ -1,4 +1,9 @@
---// ANTONIO HUB v4.9 FINAL  (Start | ESP | Anzahl | Teleport | Visuals | Notifier | Webhook | Spieler | Spieler ESP | Performance | Tools | Autofarm | Home | Einstellungen)
+--// ANTONIO HUB v5.0 FINAL  (Start | ESP | Anzahl | Teleport | Visuals | Notifier | Webhook | Spieler | Spieler ESP | Performance | Tools | Autofarm | Home | Einstellungen)
+--// v5.0: TELEPORT UND HOME NEU GEBAUT
+--//       Teleport: Ein Ziel-Hub mit Ziel-Typ Eier / Spieler / Orte (Home, Home-Spots, Wegpunkte, Spawn), Richtungspfeil relativ zur Kamera,
+--//              Filter (Nur aktive / Mutationen / Nur live), Zurück-Knopf (Position vor dem letzten Teleport), Hotkeys T / H / B, ganze Seite scrollbar
+--//       Home: bis zu 10 benannte Home-Spots pro Spiel (aktiv setzen / teleportieren / löschen), Statistik (ausgeblendete Eier, im Home-Bereich?),
+--//              Radius-Ring unabhängig vom Ausblenden, Home-Spots erscheinen im Teleport-Tab unter "Orte"
 --// v4.9: TOOLS / PERFORMANCE / VISUALS / EINSTELLUNGEN ERWEITERT
 --//       Tools: Server-Info (Live), Hop-Modus (Zufaellig / Kleinster / Vollster), Server per JobId beitreten, PlaceId / Join-Skript / Position kopieren,
 --//              Auto-Rejoin bei Verbindungsverlust, "Nach Tod zurueck", Auto-Hop bei leerem Server (ohne Eier)
@@ -104,6 +109,8 @@ local S={
  pAutoBoost=false,pAutoFps=25,pGc=false,pGcInt=60,
  vTint=1,vHudPos=false,vHudTime=false,vHudPlace=1,vHudSize=12,
  toastOn=true,toastPos=1,uiSound=false,panicKey=true,startHidden=false,
+ -- neu in v5.0 (Teleport / Home)
+ tpMode=1,tpOnlyOn=false,tpOnlyMut=false,tpOnlyLive=false,tpKeys=false,homeRing=true,homeSaves={},
 }
 do
  if canFile then
@@ -155,6 +162,7 @@ S.vTint=math.clamp(math.floor(S.vTint),1,4)
 S.vHudPlace=math.clamp(math.floor(S.vHudPlace),1,3)
 S.vHudSize=math.clamp(S.vHudSize,10,20)
 S.toastPos=math.clamp(math.floor(S.toastPos),1,2)
+S.tpMode=math.clamp(math.floor(S.tpMode),1,3)
 local noSave,saveQueued=false,false
 local function save()
  if not canFile or saveQueued or noSave then return end
@@ -297,6 +305,18 @@ add("tp_home","Zu Home","To home")
 add("tp_count","%d von %d Eiern angezeigt","%d of %d eggs shown")
 add("tp_gone","Dieses Ei ist nicht mehr da","That egg is gone")
 add("tp_nohome","Kein Home gesetzt (Bereich Home)","No home set (Home tab)")
+add("tp_search","Suchen...","Search...")
+add("tpm_eggs","Eier","Eggs") add("tpm_players","Spieler","Players") add("tpm_places","Orte","Places") add("tp_mode","Ziel-Typ","Target type")
+add("tp_b_near","Nächstes Ei","Nearest egg") add("tp_b_rare","Seltenstes","Rarest") add("tp_b_home","Home","Home") add("tp_b_back","Zurück","Back")
+add("tp_nobak","Noch keine vorherige Position","No previous position yet") add("tp_back_ok","Zurück teleportiert","Teleported back")
+add("tp_f_active","Nur aktive","Active only") add("tp_f_mut","Mutationen","Mutations") add("tp_f_live","Nur live","Live only")
+add("tp_keys","Teleport-Hotkeys","Teleport hotkeys") add("tp_keys_sub","T = nächstes Ei, H = Home, B = zurück","T = nearest egg, H = home, B = back")
+add("tp_empty_players","Keine anderen Spieler mit Charakter im Server.","No other players with a character in the server.")
+add("tp_empty_places","Noch keine Orte. Speichere Home-Spots (Home-Tab) oder Wegpunkte (Spieler-Tab).","No places yet. Save home spots (Home tab) or waypoints (Player tab).")
+add("tp_hint_players","Klick auf einen Spieler = Teleport zu ihm.","Click a player = teleport to them.")
+add("tp_hint_places","Klick auf einen Ort = Teleport dorthin.","Click a place = teleport there.")
+add("tpl_home","Home (aktiv)","Home (active)") add("tpl_spawn","Spawn","Spawn")
+add("tpl_save","Home-Spot: %s","Home spot: %s") add("tpl_wp","Wegpunkt: %s","Waypoint: %s")
 -- Home
 add("h_head","Home / Plot","Home / Plot")
 add("h_cur","Dein Home","Your home")
@@ -312,10 +332,21 @@ add("h_set_ok","Home gesetzt!","Home set!")
 add("h_cleared","Home gelöscht","Home deleted")
 add("h_tp_ok","Zu Home teleportiert","Teleported home")
 add("h_nochar","Kein Charakter gefunden","No character found")
-add("h_info","Das Home wird pro Spiel gespeichert und beim nächsten Start automatisch geladen.","Home is saved per game and loaded automatically next time.")
+add("h_info","Das aktive Home und alle Home-Spots werden pro Spiel gespeichert und beim nächsten Start geladen. Home-Spots findest du im Teleport-Tab unter „Orte“.","The active home and all home spots are saved per game and loaded next time. You can find home spots in the Teleport tab under “Places”.")
 add("h_info_na","Dein Executor kann keine Dateien speichern – Home gilt nur für diese Sitzung.","Your executor can't save files – home only lasts for this session.")
 add("h_hide","Eier im Radius ausblenden","Hide eggs in radius") add("h_hide_sub","Eier um dein Home verschwinden aus ESP, Teleport & Listen","Eggs around your home vanish from ESP, teleport & lists")
 add("h_radius","Home-Radius","Home radius")
+add("h_ring","Radius-Ring anzeigen","Show radius ring") add("h_ring_sub","Zeigt den Home-Bereich als leuchtenden Ring in der Welt","Shows the home area as a glowing ring in the world")
+add("h_stats_t","%d Eier im Radius ausgeblendet  •  %s","%d eggs hidden in radius  •  %s")
+add("h_in","Du bist im Home-Bereich","You are inside the home area") add("h_out","Du bist außerhalb","You are outside")
+add("h_hide_off","Ausblenden ist aus","Hiding is off")
+add("h_saves","Home-Spots","Home spots")
+add("h_name","Name des Spots (optional)...","Spot name (optional)...")
+add("h_save","Aktuelle Position als Spot speichern","Save current position as spot")
+add("h_saves_empty","Noch keine Home-Spots gespeichert.","No home spots saved yet.")
+add("h_active","Aktiv","Active") add("h_default","Spot %d","Spot %d")
+add("h_saved_ok","Home-Spot gespeichert","Home spot saved") add("h_full","Maximal 10 Home-Spots","Maximum of 10 home spots")
+add("h_activated","Aktives Home: %s","Active home: %s")
 -- Visuals
 add("v_preset","Presets","Presets")
 add("v_scout","Ei-Jagd-Preset","Egg hunt preset")
@@ -679,7 +710,7 @@ add("s_reset_msg","Zurückgesetzt – bitte Skript neu ausführen","Reset – pl
 add("s_unload","Hub entladen","Unload hub")
 add("s_info","Info","Info")
 add("s_caps_t","Executor: %s\nDateien %s  •  Drawing %s  •  HTTP %s  •  Zwischenablage %s\nFPS-Limit %s  •  Auto-Execute %s  •  Klick-Signale %s","Executor: %s\nFiles %s  •  Drawing %s  •  HTTP %s  •  Clipboard %s\nFPS cap %s  •  Auto execute %s  •  Click signals %s")
-add("s_ver","Antonio Hub v4.9  •  discord.gg/saveegg","Antonio Hub v4.9  •  discord.gg/saveegg")
+add("s_ver","Antonio Hub v5.0  •  discord.gg/saveegg","Antonio Hub v5.0  •  discord.gg/saveegg")
 
 local langFns,textObjs={}, {}
 local function tr(k) local t=D[S.lang] return (t and t[k]) or D.de[k] or k end
@@ -1211,9 +1242,15 @@ local function updateTargets()
   end
  end
  local vis={}
+ local hidN=0
  for k,e in pairs(cache) do
-  if not inHomeZone(e.pos) and not (S.mutOnly and not HK.isMut(e)) then vis[k]=e end
+  if inHomeZone(e.pos) then
+   hidN=hidN+1
+  elseif not (S.mutOnly and not HK.isMut(e)) then
+   vis[k]=e
+  end
  end
+ HK.homeHiddenN=hidN
  local want,counts,all={}, {}, {}
  for k,e in pairs(vis) do
   all[e.ti]=(all[e.ti] or 0)+1
@@ -2006,6 +2043,7 @@ HK.moveTo=function(pos)
  local my=HK.tpToken
  local from=hrp0.Position
  local dist=(pos-from).Magnitude
+ if dist>8 then HK.prevPos=from end -- v5.0: Position vor dem Teleport merken (Zurueck-Knopf)
  local step=math.max(10,S.tpStep)
  local n=(S.tpSafe and dist>step) and math.ceil(dist/step) or 1
  HK.tpUntil=tick()+n*S.tpDelay+S.tpHold+0.6
@@ -2526,64 +2564,130 @@ do
  end
 end
 
---// ---------------- TELEPORT ----------------
+--// ---------------- TELEPORT (v5.0: Eier / Spieler / Orte) ----------------
+-- Ein Ziel-Hub: Eier (mit Filtern), Spieler und Orte (Home, Home-Spots, Wegpunkte, Spawn).
+-- Pfeil zeigt die Richtung relativ zur Kamera, "Zurück" springt zur Position vor dem letzten Teleport, Hotkeys T / H / B.
 ;(function()
- local MAXROWS=400
- local tpg=newPage("teleport")
+ local MAXROWS=300
+ local tp=scroller(newPage("teleport"))
+ local status
+ local msgUntil=0
+ local rowPool,rowAct={}, {}
+ local applyMode
+ local sortBtn,chipFrame
+ local spawnCache,spawnT=nil,0
+ local ARROWS={"↑","↗","→","↘","↓","↙","←","↖"}
+ local GOLDC=Color3.fromRGB(255,205,50)
 
- local search=new("TextBox",{Size=UDim2.new(1,-150,0,34),Position=UDim2.fromOffset(14,12),BackgroundColor3=C.item,Text="",PlaceholderColor3=C.sub,
-  TextColor3=C.txt,Font=Enum.Font.GothamMedium,TextSize=13,ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left},tpg)
- reg(search,"esp_search","PlaceholderText")
- round(search,10)
- local ss=stroke(search,C.border,0.3)
- new("UIPadding",{PaddingLeft=UDim.new(0,12)},search)
+ local function refresh() pcall(updateTeleport) end
+ local function setStatus(t) status.Text=t msgUntil=tick()+3 end
+ local function myPos()
+  local c=P.Character
+  local hrp=c and c:FindFirstChild("HumanoidRootPart")
+  return hrp and hrp.Position
+ end
+ -- Richtung des Ziels relativ zur Kamera (oben = vor dir)
+ local function arrowFor(pos)
+  local cam=workspace.CurrentCamera
+  local me=myPos()
+  if not cam or not me then return "" end
+  local rel=pos-me
+  local lv=cam.CFrame.LookVector
+  local look=Vector3.new(lv.X,0,lv.Z)
+  if look.Magnitude<0.01 then return "" end
+  look=look.Unit
+  local right=Vector3.new(-look.Z,0,look.X)
+  local ang=math.deg(math.atan2(rel:Dot(right),rel:Dot(look)))
+  return ARROWS[math.floor(((ang+22.5)%360)/45)+1]
+ end
+
+ --// Aktionen
+ local function goNearest()
+  local e=nearestEgg(true)
+  if not e then e=nearestEgg(false) end
+  if tpTo(e) then setStatus(trf("tp_ok",TYPES[e.ti].name)) end
+ end
+ local function goRarest()
+  local e=rarestEgg()
+  if tpTo(e) then setStatus(trf("tp_ok",TYPES[e.ti].name)) end
+ end
+ local function goHome()
+  if tpHome() then setStatus(tr("h_tp_ok")) end
+ end
+ local function goBack()
+  local p=HK.prevPos
+  if not p then notify(tr("tp_nobak"),C.bad,true) return end
+  HK.moveTo(p)
+  setStatus(tr("tp_back_ok"))
+  notify(tr("tp_back_ok"),C.acc,true)
+ end
+
+ --// Kopfbereich: Suche + Sortierung
+ local sf=new("Frame",{Size=UDim2.new(1,0,0,38),BackgroundColor3=C.item,LayoutOrder=ord(tp)},tp)
+ round(sf,10)
+ local ss=stroke(sf,C.border,0.3)
+ local search=new("TextBox",{BackgroundTransparency=1,Position=UDim2.fromOffset(12,0),Size=UDim2.new(1,-134,1,0),Text="",PlaceholderColor3=C.sub,
+  TextColor3=C.txt,Font=Enum.Font.GothamMedium,TextSize=13,ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left},sf)
+ reg(search,"tp_search","PlaceholderText")
  search.Focused:Connect(function() tw(ss,{Color=C.acc,Transparency=0}) end)
  search.FocusLost:Connect(function() tw(ss,{Color=C.border,Transparency=0.3}) end)
-
- local sortBtn=makeButton(tpg,"tp_sort_luck",Color3.fromRGB(70,74,100),nil)
- sortBtn.Size=UDim2.fromOffset(108,34)
- sortBtn.Position=UDim2.new(1,-122,0,12)
+ sortBtn=makeButton(sf,"tp_sort_luck",Color3.fromRGB(70,74,100),nil)
+ sortBtn.Size=UDim2.fromOffset(110,28)
+ sortBtn.Position=UDim2.new(1,-118,0.5,-14)
  local function refreshSort() sortBtn.Text=tr(S.tpSort==2 and "tp_sort_dist" or "tp_sort_luck") end
  onLang(refreshSort)
  sortBtn.MouseButton1Click:Connect(function()
   S.tpSort=(S.tpSort==2) and 1 or 2
   save()
   refreshSort()
-  pcall(updateTeleport)
+  refresh()
  end)
 
- local btns=new("Frame",{Size=UDim2.new(1,-28,0,34),Position=UDim2.fromOffset(14,54),BackgroundTransparency=1},tpg)
- new("UIGridLayout",{CellSize=UDim2.new(1/3,-6,1,0),CellPadding=UDim2.fromOffset(8,0),SortOrder=Enum.SortOrder.LayoutOrder},btns)
+ --// Ziel-Typ
+ makeSegment(tp,"tp_mode",{"tpm_eggs","tpm_players","tpm_places"},S.tpMode,function(i)
+  S.tpMode=i
+  save()
+  if applyMode then applyMode() end
+  refresh()
+ end)
 
- local status=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,14,1,-38),Size=UDim2.new(1,-28,0,32),Text="",
-  TextColor3=C.sub,Font=Enum.Font.Gotham,TextSize=11,TextWrapped=true,TextTruncate=Enum.TextTruncate.AtEnd,
-  TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top},tpg)
- local msgUntil=0
- local function setStatus(t) status.Text=t msgUntil=tick()+3 end
+ --// Schnellaktionen
+ local btns=new("Frame",{Size=UDim2.new(1,0,0,38),BackgroundTransparency=1,LayoutOrder=ord(tp)},tp)
+ new("UIGridLayout",{CellSize=UDim2.new(0.25,-8,0,38),CellPadding=UDim2.fromOffset(10,10),SortOrder=Enum.SortOrder.LayoutOrder},btns)
+ makeButton(btns,"tp_b_near","acc",goNearest,1)
+ makeButton(btns,"tp_b_rare",Color3.fromRGB(90,60,200),goRarest,2)
+ makeButton(btns,"tp_b_home",Color3.fromRGB(40,150,100),goHome,3)
+ makeButton(btns,"tp_b_back",Color3.fromRGB(70,74,100),goBack,4)
 
- makeButton(btns,"tp_egg","acc",function()
-  local e=nearestEgg(true)
-  if not e then e=nearestEgg(false) end
-  if tpTo(e) then setStatus(trf("tp_ok",TYPES[e.ti].name)) end
- end,1)
- makeButton(btns,"tp_rare",Color3.fromRGB(90,60,200),function()
-  local e=rarestEgg()
-  if tpTo(e) then setStatus(trf("tp_ok",TYPES[e.ti].name)) end
- end,2)
- makeButton(btns,"tp_home",Color3.fromRGB(40,150,100),function()
-  if tpHome() then setStatus(tr("h_tp_ok")) end
- end,3)
+ --// Filter (nur bei Eiern)
+ chipFrame=new("Frame",{Size=UDim2.new(1,0,0,30),BackgroundTransparency=1,LayoutOrder=ord(tp)},tp)
+ new("UIGridLayout",{CellSize=UDim2.new(1/3,-7,0,30),CellPadding=UDim2.fromOffset(10,10),SortOrder=Enum.SortOrder.LayoutOrder},chipFrame)
+ local function chip(key,field,order)
+  local b=new("TextButton",{BackgroundColor3=C.hover,TextColor3=Color3.new(1,1,1),Font=Enum.Font.GothamBold,TextSize=11,
+   AutoButtonColor=false,LayoutOrder=order},chipFrame)
+  reg(b,key)
+  round(b,8)
+  local function paint() tw(b,{BackgroundColor3=S[field] and C.acc or C.hover},0.15) end
+  themed(paint)
+  b.MouseButton1Click:Connect(function()
+   HK.click()
+   S[field]=not S[field]
+   save()
+   paint()
+   refresh()
+  end)
+ end
+ chip("tp_f_active","tpOnlyOn",1)
+ chip("tp_f_mut","tpOnlyMut",2)
+ chip("tp_f_live","tpOnlyLive",3)
 
- local list=new("ScrollingFrame",{Size=UDim2.new(1,-28,1,-146),Position=UDim2.fromOffset(14,98),BackgroundTransparency=1,BorderSizePixel=0,
-  ScrollBarThickness=3,ScrollBarImageColor3=C.acc,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y},tpg)
- new("UIListLayout",{Padding=UDim.new(0,6),SortOrder=Enum.SortOrder.LayoutOrder},list)
- new("UIPadding",{PaddingRight=UDim.new(0,6)},list)
+ status=makeLabelBox(tp,nil,nil,40)
 
- local rowPool,rowKey={}, {}
+ --// Listenzeilen (gemeinsam fuer Eier / Spieler / Orte)
  local function getRow(i)
   local r=rowPool[i]
   if r then return r end
-  local row=new("TextButton",{Size=UDim2.new(1,0,0,42),BackgroundColor3=C.item,Text="",AutoButtonColor=false,Visible=false,LayoutOrder=i},list)
+  local row=new("TextButton",{Size=UDim2.new(1,0,0,42),BackgroundColor3=C.item,Text="",AutoButtonColor=false,Visible=false,LayoutOrder=1000+i},tp)
   round(row,9)
   local rs=stroke(row,C.border,0.4)
   local bar=new("Frame",{Size=UDim2.fromOffset(3,24),Position=UDim2.fromOffset(0,9),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0},row,true)
@@ -2598,73 +2702,185 @@ end
   row.MouseEnter:Connect(function() tw(row,{BackgroundColor3=C.hover}) tw(rs,{Color=r.color,Transparency=0.1}) end)
   row.MouseLeave:Connect(function() tw(row,{BackgroundColor3=C.item}) tw(rs,{Color=C.border,Transparency=0.4}) end)
   row.MouseButton1Click:Connect(function()
-   local k=rowKey[i]
-   local e=k and lastTargets[k]
-   if e then
-    if tpTo(e) then setStatus(trf("tp_ok",TYPES[e.ti].name)) end
-   else
-    notify(tr("tp_gone"),C.bad,true)
-   end
+   HK.click()
+   local act=rowAct[i]
+   if act then act() end
   end)
   rowPool[i]=r
   return r
  end
 
- updateTeleport=function()
-  local c=P.Character
-  local hrp=c and c:FindFirstChild("HumanoidRootPart")
-  local rp=hrp and hrp.Position
-  local q=string.lower(search.Text)
-  local items,total={}, 0
+ --// Eintraege je Modus aufbauen
+ local function coordText(p)
+  return string.format("X %d  Y %d  Z %d",math.floor(p.X),math.floor(p.Y),math.floor(p.Z))
+ end
+ local function goPlace(pos,name)
+  HK.moveTo(pos+Vector3.new(0,3,0))
+  setStatus(trf("wp_tp",name))
+  notify(trf("wp_tp",name),C.acc,true)
+ end
+
+ local function buildEggs(q,rp)
+  local items,all={}, 0
   for k,e in pairs(lastTargets) do
-   total=total+1
+   all=all+1
    local ty=TYPES[e.ti]
-   if q=="" or string.find(string.lower(ty.name),q,1,true) then
-    items[#items+1]={k=k,e=e,d=rp and (e.pos-rp).Magnitude or math.huge}
+   local okF=true
+   if S.tpOnlyOn and not ty.on then okF=false end
+   if S.tpOnlyMut and not HK.isMut(e) then okF=false end
+   if S.tpOnlyLive and not e.live then okF=false end
+   if okF and (q=="" or string.find(string.lower(ty.name),q,1,true)) then
+    local mn=(e.mut or 0)>0 and (" ("..HK.MUTN[e.mut]..")") or ""
+    local s=string.format("Luck %s  •  %s",ty.luck,coordText(e.pos))
+    if not e.live then s=s.."  •  "..tr("ghost_tag") end
+    items[#items+1]={key=k,ti=e.ti,name=ty.name..mn,sub=s,color=ty.color,pos=e.pos,d=rp and (e.pos-rp).Magnitude or math.huge,
+     act=function()
+      local ee=lastTargets[k]
+      if ee then
+       if tpTo(ee) then setStatus(trf("tp_ok",TYPES[ee.ti].name)) end
+      else
+       notify(tr("tp_gone"),C.bad,true)
+      end
+     end}
    end
   end
   if S.tpSort==2 then
    table.sort(items,function(a,b)
     if a.d~=b.d then return a.d<b.d end
-    return a.k<b.k
+    return a.key<b.key
    end)
   else
    table.sort(items,function(a,b)
-    if a.e.ti~=b.e.ti then return a.e.ti>b.e.ti end
+    if a.ti~=b.ti then return a.ti>b.ti end
     if a.d~=b.d then return a.d<b.d end
-    return a.k<b.k
+    return a.key<b.key
    end)
   end
+  return items,all
+ end
+
+ local function buildPlayers(q,rp)
+  local items,all={}, 0
+  for _,pl in ipairs(Players:GetPlayers()) do
+   if pl~=P then
+    local ch=pl.Character
+    local ph=ch and ch:FindFirstChild("HumanoidRootPart")
+    if ph then
+     all=all+1
+     if q=="" or string.find(string.lower(pl.Name),q,1,true) or string.find(string.lower(pl.DisplayName),q,1,true) then
+      local hum=ch:FindFirstChildOfClass("Humanoid")
+      local s="@"..pl.Name
+      if hum then s=s.."  •  "..math.floor(hum.Health).." HP" end
+      if pl.Team then s=s.."  •  "..pl.Team.Name end
+      items[#items+1]={name=pl.DisplayName,sub=s,color=pl.Team and pl.TeamColor.Color or C.acc,pos=ph.Position,
+       d=rp and (ph.Position-rp).Magnitude or math.huge,
+       act=function()
+        local h=pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
+        if h then
+         HK.moveTo(h.Position+Vector3.new(0,S.tpHeight,0))
+         setStatus(trf("pl_tp_ok",pl.DisplayName))
+         notify(trf("pl_tp_ok",pl.DisplayName),C.acc,true)
+        else
+         notify(tr("pl_gone"),C.bad,true)
+        end
+       end}
+     end
+    end
+   end
+  end
+  table.sort(items,function(a,b) return a.d<b.d end)
+  return items,all
+ end
+
+ local function buildPlaces(q,rp)
+  local items={}
+  local function add(name,pos,color,sub,act)
+   if q=="" or string.find(string.lower(name),q,1,true) then
+    items[#items+1]={name=name,sub=sub or coordText(pos),color=color,pos=pos,d=rp and (pos-rp).Magnitude or math.huge,act=act}
+   end
+  end
+  local h=getHome()
+  if h then
+   local hp=Vector3.new(h.x,h.y,h.z)
+   add(tr("tpl_home"),hp,GOLDC,nil,function() goHome() end)
+  end
+  if tick()-spawnT>5 then
+   spawnT=tick()
+   spawnCache=workspace:FindFirstChildWhichIsA("SpawnLocation",true)
+  end
+  if spawnCache and spawnCache.Parent then
+   local sp=spawnCache.Position
+   add(tr("tpl_spawn"),sp,C.acc2,nil,function() goPlace(sp+Vector3.new(0,2,0),tr("tpl_spawn")) end)
+  end
+  local saves=S.homeSaves[homeKey]
+  if type(saves)=="table" then
+   for _,s in ipairs(saves) do
+    local p=Vector3.new(s.x,s.y,s.z)
+    add(trf("tpl_save",s.n),p,GOLDC,nil,function() goPlace(p,s.n) end)
+   end
+  end
+  local wps=S.wps[homeKey]
+  if type(wps)=="table" then
+   for _,w in ipairs(wps) do
+    local p=Vector3.new(w.x,w.y,w.z)
+    add(trf("tpl_wp",w.n),p,C.acc,nil,function() goPlace(p,w.n) end)
+   end
+  end
+  return items,#items
+ end
+
+ applyMode=function()
+  sortBtn.Visible=(S.tpMode==1)
+  chipFrame.Visible=(S.tpMode==1)
+ end
+ applyMode()
+
+ updateTeleport=function()
+  local rp=myPos()
+  local q=string.lower(search.Text)
+  local mode=S.tpMode
+  local items,all
+  if mode==2 then items,all=buildPlayers(q,rp)
+  elseif mode==3 then items,all=buildPlaces(q,rp)
+  else items,all=buildEggs(q,rp) end
   local shown=math.min(#items,MAXROWS)
   for i=1,shown do
    local it=items[i]
-   local e=it.e
-   local ty=TYPES[e.ti]
    local r=getRow(i)
-   rowKey[i]=it.k
+   rowAct[i]=it.act
    r.row.Visible=true
-   r.row.LayoutOrder=i
-   r.color=ty.color
-   r.bar.BackgroundColor3=ty.color
-   local mn=(e.mut or 0)>0 and (" ("..HK.MUTN[e.mut]..")") or ""
-   r.nm.Text=ty.name..mn
-   local s=string.format("Luck %s  •  X %d  Y %d  Z %d",ty.luck,math.floor(e.pos.X),math.floor(e.pos.Y),math.floor(e.pos.Z))
-   if not e.live then s=s.."  •  "..tr("ghost_tag") end
-   r.sub.Text=s
-   r.dist.Text=(it.d<math.huge) and (math.floor(it.d).." m") or "-"
+   r.row.LayoutOrder=1000+i
+   r.color=it.color
+   r.bar.BackgroundColor3=it.color
+   r.nm.Text=it.name
+   r.sub.Text=it.sub
+   r.dist.Text=(it.d<math.huge) and (arrowFor(it.pos).." "..math.floor(it.d).." m") or "-"
   end
   for i=shown+1,#rowPool do
    rowPool[i].row.Visible=false
-   rowKey[i]=nil
+   rowAct[i]=nil
   end
   if tick()>msgUntil then
-   if total==0 then status.Text=tr("c_empty")
-   else status.Text=trf("tp_count",shown,total).."\n"..tr("tp_status") end
+   if all==0 then
+    status.Text=tr(mode==2 and "tp_empty_players" or (mode==3 and "tp_empty_places" or "c_empty"))
+   else
+    local hint=(mode==2 and "tp_hint_players") or (mode==3 and "tp_hint_places") or "tp_status"
+    status.Text=trf("tp_count",shown,all).."\n"..tr(hint)
+   end
   end
  end
 
- conn(search:GetPropertyChangedSignal("Text"):Connect(function() pcall(updateTeleport) end))
- onLang(function() pcall(updateTeleport) end)
+ conn(search:GetPropertyChangedSignal("Text"):Connect(refresh))
+ onLang(function() refresh() end)
+
+ --// Hotkeys: T = naechstes Ei, H = Home, B = zurueck
+ conn(UIS.InputBegan:Connect(function(i,gp)
+  if gp or not S.tpKeys or i.UserInputType~=Enum.UserInputType.Keyboard or UIS:GetFocusedTextBox() then return end
+  if i.KeyCode==Enum.KeyCode.T then goNearest()
+  elseif i.KeyCode==Enum.KeyCode.H then goHome()
+  elseif i.KeyCode==Enum.KeyCode.B then goBack() end
+ end))
+ makeToggle(tp,"tp_keys","tp_keys_sub",S.tpKeys,function(v) S.tpKeys=v save() end,100000)
 end)()
 
 task.spawn(function()
@@ -3270,7 +3486,7 @@ end)()
     {name="📏 "..L("Größe","Size"),value=#ls>0 and cut(table.concat(ls,"\n"),1000) or "–",inline=false},
     {name="🔗 "..L("Spiel-Link","Game link"),value="**[▶ "..L("Server beitreten","Join server").."]("..joinLink()..")**\nJobId `"..game.JobId.."`",inline=false},
    },
-   footer={text="Antonio Hub v4.9  •  discord.gg/saveegg"},
+   footer={text="Antonio Hub v5.0  •  discord.gg/saveegg"},
    timestamp=os.date("!%Y-%m-%dT%H:%M:%SZ"),
   }
  end
@@ -5672,10 +5888,13 @@ do
  end)
 end
 
---// ---------------- HOME / PLOT ----------------
+--// ---------------- HOME / PLOT (v5.0: mehrere Home-Spots, Statistik, Radius-Ring) ----------------
+-- Das aktive Home (S.homes) steuert das Ausblenden der Eier im Radius. Zusaetzlich lassen sich bis zu 10 benannte Home-Spots
+-- speichern (S.homeSaves, pro Spiel), aktiv schalten und ueber den Teleport-Tab (Orte) ansteuern.
 do
  local hp=scroller(newPage("home"))
  local marker={part=nil,bb=nil,lb=nil}
+ local GOLDC=Color3.fromRGB(255,205,50)
 
  local function destroyMarker()
   if marker.bb then pcall(function() marker.bb:Destroy() end) marker.bb=nil end
@@ -5686,15 +5905,17 @@ do
  local function refreshMarker()
   destroyMarker()
   local h=getHome()
-  if not alive or not h or not S.homeMarker then return end
+  if not alive or not h then return end
   pcall(function()
-   marker.part=raw("Part",{Name="AntonioHome",Anchored=true,CanCollide=false,CanQuery=false,CanTouch=false,Transparency=1,
-    Size=Vector3.new(1,1,1),CFrame=CFrame.new(h.x,h.y,h.z)},workspace)
-   marker.bb=raw("BillboardGui",{Adornee=marker.part,AlwaysOnTop=true,Size=UDim2.fromOffset(200,40),StudsOffset=Vector3.new(0,3,0),
-    MaxDistance=math.huge,LightInfluence=0,ResetOnSpawn=false},gui)
-   marker.lb=raw("TextLabel",{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,TextColor3=Color3.fromRGB(255,215,70),
-    TextStrokeTransparency=0,Font=Enum.Font.GothamBold,TextSize=14,Text=tr("h_label")},marker.bb)
-   if S.homeHide then
+   if S.homeMarker then
+    marker.part=raw("Part",{Name="AntonioHome",Anchored=true,CanCollide=false,CanQuery=false,CanTouch=false,Transparency=1,
+     Size=Vector3.new(1,1,1),CFrame=CFrame.new(h.x,h.y,h.z)},workspace)
+    marker.bb=raw("BillboardGui",{Adornee=marker.part,AlwaysOnTop=true,Size=UDim2.fromOffset(200,40),StudsOffset=Vector3.new(0,3,0),
+     MaxDistance=math.huge,LightInfluence=0,ResetOnSpawn=false},gui)
+    marker.lb=raw("TextLabel",{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,TextColor3=Color3.fromRGB(255,215,70),
+     TextStrokeTransparency=0,Font=Enum.Font.GothamBold,TextSize=14,Text=tr("h_label")},marker.bb)
+   end
+   if S.homeRing then
     marker.ring=raw("Part",{Name="AntonioHomeRing",Anchored=true,CanCollide=false,CanQuery=false,CanTouch=false,CastShadow=false,
      Shape=Enum.PartType.Cylinder,Material=Enum.Material.Neon,Color=Color3.fromRGB(255,215,70),Transparency=0.88,
      Size=Vector3.new(1,S.homeRadius*2,S.homeRadius*2),CFrame=CFrame.new(h.x,h.y-2,h.z)*CFrame.Angles(0,0,math.pi/2)},workspace)
@@ -5702,38 +5923,148 @@ do
   end)
  end
 
+ local function getSaves()
+  local l=S.homeSaves[homeKey]
+  if type(l)~="table" then l={} S.homeSaves[homeKey]=l end
+  return l
+ end
+
+ --// Aktives Home
  head(hp,"h_head")
  local info=infoCard(hp,"h_cur",nil)
+ local statL=makeLabelBox(hp,nil,nil,30)
  local function refreshInfo()
   local h=getHome()
-  if not h then info.Text=tr("h_none") return end
+  if not h then
+   info.Text=tr("h_none")
+   statL.Parent.Visible=false
+   return
+  end
   local c=P.Character
   local hrp=c and c:FindFirstChild("HumanoidRootPart")
+  local d
   if hrp then
-   local d=(Vector3.new(h.x,h.y,h.z)-hrp.Position).Magnitude
+   d=(Vector3.new(h.x,h.y,h.z)-hrp.Position).Magnitude
    info.Text=trf("h_pos",math.floor(h.x),math.floor(h.y),math.floor(h.z),math.floor(d))
   else
    info.Text=trf("h_pos_nodist",math.floor(h.x),math.floor(h.y),math.floor(h.z))
   end
+  statL.Parent.Visible=true
+  local where=tr(S.homeHide and ((d and d<=S.homeRadius) and "h_in" or "h_out") or "h_hide_off")
+  statL.Text=trf("h_stats_t",HK.homeHiddenN or 0,where)
  end
  onLang(refreshInfo)
 
- makeButton(hp,"h_set","acc",function() setHome() end)
- makeButton(hp,"h_tp",Color3.fromRGB(90,60,200),function() tpHome() end)
- makeButton(hp,"h_clear","bad",function() clearHome() end)
+ local bg=new("Frame",{Size=UDim2.new(1,0,0,38),BackgroundTransparency=1,LayoutOrder=ord(hp)},hp)
+ new("UIGridLayout",{CellSize=UDim2.new(1/3,-7,0,38),CellPadding=UDim2.fromOffset(10,10),SortOrder=Enum.SortOrder.LayoutOrder},bg)
+ makeButton(bg,"h_set","acc",function() setHome() end,1)
+ makeButton(bg,"h_tp",Color3.fromRGB(90,60,200),function() tpHome() end,2)
+ makeButton(bg,"h_clear","bad",function() clearHome() end,3)
+
  makeToggle(hp,"h_marker","h_marker_sub",S.homeMarker,function(v) S.homeMarker=v save() refreshMarker() end)
+ makeToggle(hp,"h_ring","h_ring_sub",S.homeRing,function(v) S.homeRing=v save() refreshMarker() end)
  makeToggle(hp,"h_hide","h_hide_sub",S.homeHide,function(v) S.homeHide=v save() refreshMarker() pcall(updateTargets) end)
  makeSlider(hp,"h_radius",100,1000,50,S.homeRadius,function(v) S.homeRadius=v save() refreshMarker() pcall(updateTargets) end,nil,function(v) return v.." m" end)
- makeLabelBox(hp,canFile and "h_info" or "h_info_na",nil,44)
+
+ --// Gespeicherte Home-Spots
+ head(hp,"h_saves")
+ local sf=new("Frame",{Size=UDim2.new(1,0,0,38),BackgroundColor3=C.item,LayoutOrder=ord(hp)},hp)
+ round(sf,10)
+ local sfs=stroke(sf,C.border,0.3)
+ local sBox=new("TextBox",{BackgroundTransparency=1,Position=UDim2.fromOffset(12,0),Size=UDim2.new(1,-24,1,0),Text="",PlaceholderColor3=C.sub,
+  TextColor3=C.txt,Font=Enum.Font.GothamMedium,TextSize=12,ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left},sf)
+ reg(sBox,"h_name","PlaceholderText")
+ sBox.Focused:Connect(function() tw(sfs,{Color=C.acc,Transparency=0}) end)
+ sBox.FocusLost:Connect(function() tw(sfs,{Color=C.border,Transparency=0.3}) end)
+
+ local saveBtnOrder=ord(hp)
+ local listBox=new("Frame",{Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundColor3=C.item,LayoutOrder=ord(hp)},hp)
+ round(listBox,10) stroke(listBox,C.border,0.3)
+ new("UIPadding",{PaddingTop=UDim.new(0,6),PaddingBottom=UDim.new(0,6),PaddingLeft=UDim.new(0,6),PaddingRight=UDim.new(0,6)},listBox)
+ new("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},listBox)
+ local emptyL=new("TextLabel",{BackgroundTransparency=1,Size=UDim2.new(1,0,0,22),TextColor3=C.sub,Font=Enum.Font.Gotham,TextSize=12,
+  TextXAlignment=Enum.TextXAlignment.Left,LayoutOrder=0},listBox)
+ reg(emptyL,"h_saves_empty")
+ local rowsH={}
+ local refreshSaves
+ refreshSaves=function()
+  for _,r in ipairs(rowsH) do pcall(function() r:Destroy() end) end
+  rowsH={}
+  local list=getSaves()
+  emptyL.Visible=(#list==0)
+  local act=getHome()
+  local c=P.Character
+  local hrp=c and c:FindFirstChild("HumanoidRootPart")
+  for i,s in ipairs(list) do
+   local isAct=act and math.abs(act.x-s.x)<1 and math.abs(act.y-s.y)<1 and math.abs(act.z-s.z)<1
+   local row=new("Frame",{Size=UDim2.new(1,0,0,40),BackgroundColor3=C.hover,LayoutOrder=i},listBox)
+   round(row,7)
+   new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(10,3),Size=UDim2.new(1,-156,0,18),Text=(isAct and "★ " or "")..s.n,
+    TextColor3=isAct and GOLDC or C.txt,Font=Enum.Font.GothamBold,TextSize=12,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},row)
+   local sub=string.format("X %d  Y %d  Z %d",math.floor(s.x),math.floor(s.y),math.floor(s.z))
+   if hrp then sub=sub.."  •  "..math.floor((Vector3.new(s.x,s.y,s.z)-hrp.Position).Magnitude).." m" end
+   new("TextLabel",{BackgroundTransparency=1,Position=UDim2.fromOffset(10,21),Size=UDim2.new(1,-156,0,16),Text=sub,TextColor3=C.sub,
+    Font=Enum.Font.Gotham,TextSize=10,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},row)
+   local ab=new("TextButton",{Size=UDim2.fromOffset(56,26),Position=UDim2.new(1,-146,0.5,-13),BackgroundColor3=isAct and GOLDC or C.acc,Text=tr("h_active"),
+    TextColor3=isAct and Color3.new(0,0,0) or Color3.new(1,1,1),Font=Enum.Font.GothamBold,TextSize=10,AutoButtonColor=false},row)
+   round(ab,7)
+   local tb=new("TextButton",{Size=UDim2.fromOffset(40,26),Position=UDim2.new(1,-86,0.5,-13),BackgroundColor3=C.acc2,Text=tr("pl_tp"),
+    TextColor3=Color3.new(1,1,1),Font=Enum.Font.GothamBold,TextSize=11,AutoButtonColor=false},row)
+   round(tb,7)
+   local db=new("TextButton",{Size=UDim2.fromOffset(34,26),Position=UDim2.new(1,-40,0.5,-13),BackgroundColor3=C.bad,Text="X",
+    TextColor3=Color3.new(1,1,1),Font=Enum.Font.GothamBold,TextSize=11,AutoButtonColor=false},row)
+   round(db,7)
+   ab.MouseButton1Click:Connect(function()
+    HK.click()
+    S.homes[homeKey]={x=s.x,y=s.y,z=s.z,ry=0}
+    save()
+    homeChanged()
+    notify(trf("h_activated",s.n),C.good,true)
+   end)
+   tb.MouseButton1Click:Connect(function()
+    HK.click()
+    HK.moveTo(Vector3.new(s.x,s.y+2,s.z))
+    notify(trf("wp_tp",s.n),C.acc,true)
+   end)
+   db.MouseButton1Click:Connect(function()
+    HK.click()
+    table.remove(list,i)
+    save()
+    refreshSaves()
+   end)
+   rowsH[#rowsH+1]=row
+  end
+ end
+ makeButton(hp,"h_save","acc",function()
+  local c=P.Character
+  local hrp=c and c:FindFirstChild("HumanoidRootPart")
+  if not hrp then notify(tr("h_nochar"),C.bad,true) return end
+  local list=getSaves()
+  if #list>=10 then notify(tr("h_full"),C.bad,true) return end
+  local nm=sBox.Text:gsub("^%s+",""):gsub("%s+$","")
+  if nm=="" then nm=trf("h_default",#list+1) end
+  local p=hrp.Position
+  list[#list+1]={n=nm:sub(1,24),x=p.X,y=p.Y,z=p.Z}
+  sBox.Text=""
+  save()
+  refreshSaves()
+  notify(tr("h_saved_ok"),C.good,true)
+ end,saveBtnOrder)
+ refreshSaves()
+ onLang(function() pcall(refreshSaves) end)
+ makeLabelBox(hp,canFile and "h_info" or "h_info_na",nil,64)
 
  homeFns[#homeFns+1]=refreshInfo
  homeFns[#homeFns+1]=function() pcall(updateTargets) end
  homeFns[#homeFns+1]=refreshMarker
+ homeFns[#homeFns+1]=refreshSaves
  refreshMarker()
 
  task.spawn(function()
   while alive do
-   if cur=="home" then pcall(refreshInfo) end
+   if cur=="home" then
+    pcall(refreshInfo)
+   end
    local h=getHome()
    if h and marker.lb and marker.lb.Parent then
     local c=P.Character
@@ -5892,7 +6223,7 @@ do
  --// ---------------- CONFIGS (v3.9) ----------------
  head(sp,"cfg_head")
  do
-  local SKIP={configs=true,nfHook=true,hkMsgId=true,hkMsgJob=true,hkPing=true,homes=true,eggsInit=true,nfInit=true,espv=true,whv=true,fuseEnd=true,autoload=true,wps=true}
+  local SKIP={configs=true,nfHook=true,hkMsgId=true,hkMsgJob=true,hkPing=true,homes=true,eggsInit=true,nfInit=true,espv=true,whv=true,fuseEnd=true,autoload=true,wps=true,homeSaves=true}
   local function deep(v)
    if type(v)~="table" then return v end
    local t={}
@@ -6245,4 +6576,4 @@ closeB.MouseButton1Click:Connect(function() closeHub() end)
 -- v4.9: Menue beim Start verstecken (Menue-Taste oeffnet es wieder)
 if S.startHidden then main.Visible=false end
 
-print("Antonio Hub v4.9 geladen")
+print("Antonio Hub v5.0 geladen")
