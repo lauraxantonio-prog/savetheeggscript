@@ -1,0 +1,3638 @@
+--// Antonio Hub (Save The Egg) v1.0
+local Players = game:GetService("Players")
+local P = Players.LocalPlayer
+local RS = game:GetService("RunService")
+local TS = game:GetService("TweenService")
+local UIS = game:GetService("UserInputService")
+local GS = game:GetService("GuiService")
+local VIM = game:GetService("VirtualInputManager")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+--// Alte Instanz entladen (falls das Script erneut ausgeführt wird)
+local genv = (getgenv and getgenv()) or _G
+if genv.AntonioHubUnload then pcall(genv.AntonioHubUnload) genv.AntonioHubUnload = nil end
+
+--// Verbindungen sammeln (für Terminate / Entladen)
+local conns = {}
+local function bind(sig, fn)
+    local c = sig:Connect(fn)
+    conns[#conns+1] = c
+    return c
+end
+
+--// EINSTELLUNGEN (Egg ESP)
+local BASE = Vector3.new(1,3,50)
+local IGNORE_R = 600
+local SHOW_BASES = false
+local MAXSIZE = 40
+local AUTOLOAD = nil
+local QUICK_DELAY = 0.4
+local QUICK_RETRY = 0.6
+local QUICK_TRIES = 4
+local AFK_INTERVAL = 120
+local EXCL = {"statu","sockel","pedestal","altar","nebu","nebel","nebula"}
+local EXCL_SELF = {"node","blossom","band","center","goldendragon","golden dragon","golden_dragon","golden-dragon","golddragon","gold dragon","jungle","dschungel"}
+
+-- Darstellung (Egg ESP) - Standardwerte
+local S = {
+    tracers=false, tracerFrom="bottom", tracerThick=2,
+    textSize=15, maxDist=math.huge, maxMarks=30,
+    showName=true, showDist=true, showSize=true, showHl=true, xray=true,
+    useCol=false, col=Color3.fromRGB(255,255,255),
+}
+local S0 = {}
+for k,v in pairs(S) do S0[k]=v end
+
+-- Spieler ESP - Standardwerte
+-- nameMode: 1 = Aus, 2 = Name, 3 = Anzeigename, 4 = Beide
+-- boxType: 1 = 2D, 2 = 3D, 3 = Ecken   |   tracerFrom: 1 = unten, 2 = Mitte
+local PS = {
+    nameMode=4, dist=true, item=false, leader=false, hl=true,
+    skel=false, box=false, boxType=1, tracer=false, tracerFrom=1,
+    maxDist=math.huge, col=Color3.fromRGB(255,50,50),
+}
+local PS0 = {}
+for k,v in pairs(PS) do PS0[k]=v end
+
+-- Optionen-States
+local antiAfkOn = false
+local playerEspOn = false
+
+--// DIAMOND
+local diamondOn = false
+local diamondEspOn = false
+local diamonds = {}
+local collectedCount = 0
+local STATIC_TTL = 5
+local VIS_TTL = 0.25
+local RETRY_SKIP = {3, 6, 12}
+local PICKUP_SKIP = 600
+local diamondWake = Instance.new("BindableEvent")
+
+local function rgb(r,g,b) return Color3.fromRGB(r,g,b) end
+
+--// Hilfstabelle X (spart Locals wegen Lua-Limit von 200)
+local X={
+    mut={Rainbow=true,Retro=true,Diamond=true,Gold=true},
+    words={"rainbow","regenbogen","regenbog","rainbo","retro","diamond","diamant","gold","golt"},
+}
+-- Ei-Namen ermitteln (für die Mutations-Anzeige): Texte/Prompts/Attribute/Namen durchsuchen
+X.generic={egg=true,eggs=true,ei=true,eier=true,model=true,part=true,meshpart=true,union=true,handle=true,
+    hitbox=true,root=true,primarypart=true,main=true,body=true,base=true,mesh=true,world=true,
+    worldegg=true,worldeggs=true,eggmodel=true,folder=true,map=true,default=true,egggui=true}
+X.nc=setmetatable({},{__mode="k"})
+function X.strip(raw,w,fr)
+    local low=raw:lower()
+    local pat=fr and ("%f[%a]"..w.."%f[%A]") or nil
+    while true do
+        local s,e
+        if pat then s,e=low:find(pat) else s,e=low:find(w,1,true) end
+        if not s then break end
+        raw=raw:sub(1,s-1).." "..raw:sub(e+1)
+        low=raw:lower()
+    end
+    return raw
+end
+function X.clean(raw)
+    if type(raw)~="string" then return nil end
+    raw=(raw:gsub("<[^>]+>",""))
+    raw=raw:gsub("(%l)(%u)","%1 %2")          -- DragonEgg -> Dragon Egg
+    raw=raw:gsub("[_%-:|]+"," ")
+    for _,w in ipairs(X.words) do raw=X.strip(raw,w) end   -- Mutations-Wörter raus
+    raw=X.strip(raw,"world egg") raw=X.strip(raw,"worldegg") raw=X.strip(raw,"world",true)
+    raw=raw:gsub("%s+"," ")
+    raw=raw:gsub("^%s+",""):gsub("%s+$","")
+    if #raw<3 or #raw>32 or not raw:find("%a%a%a") then return nil end
+    if raw:find("%d+%s*:%s*%d+") or raw:find("^%[?%d") or raw:find("%d%d") then return nil end
+    local l=raw:lower()
+    if X.generic[(l:gsub("%s",""))] then return nil end
+    if raw==l then raw=raw:gsub("(%a)([%w]*)",function(a,b) return a:upper()..b end) end
+    return raw
+end
+function X.lines(txt)
+    if type(txt)~="string" then return nil end
+    for ln in txt:gmatch("[^\r\n]+") do
+        local r=X.clean(ln)
+        if r then return r end
+    end
+    return nil
+end
+function X.find(it)
+    local t=it.tgt
+    local r=X.lines(it.n)
+    if r then return r end
+    -- Prompts & Labels direkt am Ei
+    local n=0
+    for _,d in ipairs(t:GetDescendants()) do
+        n=n+1 if n>400 then break end
+        r=nil
+        if d:IsA("ProximityPrompt") then r=X.lines(d.ObjectText)
+        elseif d:IsA("TextLabel") or d:IsA("TextButton") then r=X.lines(d.Text) end
+        if r then return r end
+    end
+    -- BillboardGuis im PlayerGui, die am Ei hängen
+    local pgui=P:FindFirstChildOfClass("PlayerGui")
+    if pgui then
+        for _,gui in ipairs(pgui:GetChildren()) do
+            if gui:IsA("BillboardGui") and gui.Adornee
+                and (gui.Adornee==t or gui.Adornee:IsDescendantOf(t) or t:IsDescendantOf(gui.Adornee)) then
+                for _,d in ipairs(gui:GetDescendants()) do
+                    if d:IsA("TextLabel") then r=X.lines(d.Text) if r then return r end end
+                end
+            end
+        end
+    end
+    -- Attribute (Name/Egg/Type/Kind) am Ei und seinen Eltern
+    local a=t
+    for _=1,3 do
+        if not a or a==workspace then break end
+        local ok,at=pcall(function() return a:GetAttributes() end)
+        if ok and at then
+            for k,v in pairs(at) do
+                if type(v)=="string" then
+                    local kl=tostring(k):lower()
+                    if kl:find("name",1,true) or kl:find("egg",1,true) or kl:find("type",1,true) or kl:find("kind",1,true) then
+                        r=X.clean(v) if r then return r end
+                    end
+                end
+            end
+        end
+        a=a.Parent
+    end
+    -- Objektnamen (WorldEgg & Co. werden ignoriert)
+    a=t
+    for _=1,3 do
+        if not a or a==workspace then break end
+        r=X.clean(a.Name) if r then return r end
+        a=a.Parent
+    end
+    return nil
+end
+function X.base(it)
+    local t=it.tgt
+    if not t then return nil end
+    local c=X.nc[t]
+    if c and (c.v or tick()-c.t<8) then return c.v or nil end
+    local ok,v=pcall(X.find,it)
+    if not ok then v=nil end
+    X.nc[t]={v=v or false,t=tick()}
+    return v
+end
+function X.mkLines(n,th)
+    local t={}
+    for i=1,n do
+        local l=Drawing.new("Line") l.Thickness=th l.Visible=false t[i]=l
+    end
+    return t
+end
+function X.hideAll(t) if t then for _,l in ipairs(t) do l.Visible=false end end end
+
+-- {Name, Keywords, Ei-Kontext, Regenbogen, strikt, Ausschluss}
+local E = {
+    {"Galaxie-Ei",{"galax"}},
+    {"Heavy-Ei",{"heavy","schwer"}},
+    {"Rainbow (alle)",{"rainbow","regenbog","rainbo"},true,true},
+    {"Retro (alle)",{"retro"},true,true},
+    {"Diamond (alle)",{"diamond","diamant"},true},
+    {"Gold (alle)",{"gold","golt"},true},
+    {"Samurai-Ei",{"samurai","samurei","samuray","shogun","ronin","katana","bushido"},true},
+    {"Thunder-Ei",{"thunder","donner","blitz","lightning","gewitter"},true,false,true},
+    {"Bone Demon-Ei",{"bonedemon","bone demon","bone_demon","bone-demon","knochendaemon","knochend\195\164mon","knochen daemon","knochen d\195\164mon","knochen-daemon","knochen-d\195\164mon","knochen"},true,false,true},
+    {"Bone King-Ei",{"boneking","bone king","bone_king","bone-king","knochenkoenig","knochenk\195\182nig","knochen koenig","knochen k\195\182nig","knochen-koenig","knochen-k\195\182nig","knochen","k\195\182nig","koenig"},true,false,true},
+    {"Skeleton-Ei",{"skelet","gerippe","skeleton"},true,false,true},
+    {"Halloween-Ei",{"halloween","kuerbis","k\195\188rbis","pumpkin","grusel","spooky"},true,false,true},
+    {"Daemon-Ei",{"demon","daemon","d\195\164mon"},false,false,false,{"bone","knochen","skelet"}},
+    {"Admin Abuse-Ei",{"admin","abuse"},true},
+}
+
+local COL = {
+    rgb(170,50,255),
+    rgb(255,0,150),
+    rgb(255,255,255),
+    rgb(255,140,0),
+    rgb(150,255,255),
+    rgb(255,215,0),
+    rgb(255,70,70),
+    rgb(90,140,255),
+    rgb(220,220,190),
+    rgb(200,170,110),
+    rgb(190,190,210),
+    rgb(255,128,0),
+    rgb(255,50,150),
+    rgb(255,140,0),
+}
+
+--// HILFSFUNKTIONEN (Egg ESP)
+local function has(t,...) for _,k in ipairs({...}) do if t:find(k,1,true) then return true end end end
+local function cfOf(o) if o:IsA("Model") then return o:GetPivot() end return o.CFrame end
+local function isEggT(s) return has(s,"egg") or has(s,"eier") or s:find("%f[%a]ei%f[%A]")~=nil or s:find("ei$")~=nil end
+
+local function eggCtx(o)
+    local a=o
+    for _=1,3 do
+        if not a or a==workspace then return false end
+        if isEggT(a.Name:lower()) then return true end
+        a=a.Parent
+    end
+    return false
+end
+
+local function eggStrict(it)
+    if isEggT(it.kt) then return true end
+    local t=it.tgt
+    if isEggT(t.Name:lower()) then return true end
+    local p=t.Parent
+    return p~=nil and p~=workspace and isEggT(p.Name:lower())
+end
+
+local function clean(t) return t:gsub("<[^>]+>",""):lower() end
+
+local function attrText(o)
+    local s=""
+    local ok,at=pcall(function() return o:GetAttributes() end)
+    if ok and at then
+        for k,v in pairs(at) do s=s.." "..tostring(k):lower().." "..(type(v)=="string" and v:lower() or "") end
+    end
+    return s
+end
+
+local function big(o)
+    local ok,s=pcall(function() return o:IsA("Model") and o:GetExtentsSize() or o.Size end)
+    return ok and math.max(s.X,s.Y,s.Z)>MAXSIZE
+end
+
+local function skip(o)
+    if (cfOf(o).Position-BASE).Magnitude<IGNORE_R then return true end
+    local a=o.Parent
+    while a and a~=workspace do
+        if has(a.Name:lower(),"base","plot","spawn") or Players:FindFirstChild(a.Name) then return true end
+        a=a.Parent
+    end
+end
+
+local function exAnc(o)
+    local a=o
+    for _=1,4 do
+        if not a or a==workspace then return false end
+        if has(a.Name:lower(),unpack(EXCL)) then return true end
+        a=a.Parent
+    end
+    return false
+end
+
+local allKeys={}
+for _,e in ipairs(E) do for _,k in ipairs(e[2]) do allKeys[#allKeys+1]=k end end
+
+local function anc(o)
+    local a=o.Parent
+    while a and a~=workspace do
+        if a:IsA("Model") and has(a.Name:lower(),unpack(allKeys)) then return true end
+        a=a.Parent
+    end
+    return false
+end
+
+--// HILFSFUNKTIONEN (Diamond, mit Shop/Potion-Filter)
+local function isEggOrPropRelated(o)
+    local blacklistedKeywords = {
+        "egg", "prop", "potion", "trank", "shop", "buy", "kauf",
+        "vendor", "merchant", "stand", "seller", "npc"
+    }
+    local a = o
+    while a and a ~= workspace do
+        local name = a.Name:lower()
+        for _, kw in ipairs(blacklistedKeywords) do
+            if name:find(kw, 1, true) then return true end
+        end
+        a = a.Parent
+    end
+    local pp = o:FindFirstChildWhichIsA("ProximityPrompt", true)
+    if pp then
+        local text = (pp.ActionText .. " " .. pp.ObjectText):lower()
+        for _, kw in ipairs(blacklistedKeywords) do
+            if text:find(kw, 1, true) then return true end
+        end
+    end
+    return false
+end
+
+local function belongsToHumanoid(o)
+    local a = o
+    while a and a ~= workspace do
+        if a:FindFirstChildOfClass("Humanoid") then return true end
+        a = a.Parent
+    end
+    return false
+end
+
+-- Diamond ESP: Highlight + Label (Parent = Menü-GUI, wird beim Entladen mit entfernt)
+local function updateDiamondHighlight(e, state)
+    if state and diamondEspOn then
+        local o = e.obj
+        if not (e.part and e.part.Parent) then
+            e.part = (o and o.Parent) and (o:IsA("BasePart") and o or o:FindFirstChildWhichIsA("BasePart", true)) or nil
+        end
+        if not e.part then return end
+        local adornee = (o and o:IsA("Model")) and o or e.part
+        if e.highlight and e.highlight.Adornee ~= adornee then
+            pcall(function() e.highlight:Destroy() end) e.highlight = nil
+            pcall(function() e.bb:Destroy() end) e.bb = nil e.lb = nil
+        end
+        if not e.highlight then
+            local root = X.root or adornee
+            local hl = Instance.new("Highlight")
+            hl.FillColor = Color3.fromRGB(0, 240, 255)
+            hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+            hl.FillTransparency = 0.5
+            hl.OutlineTransparency = 0
+            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            hl.Adornee = adornee
+            hl.Parent = root
+            e.highlight = hl
+
+            local bb = Instance.new("BillboardGui")
+            bb.Adornee = e.part
+            bb.AlwaysOnTop = true
+            bb.Size = UDim2.new(0, 140, 0, 36)
+            bb.StudsOffset = Vector3.new(0, 3, 0)
+            bb.MaxDistance = math.huge
+            bb.Parent = root
+            local lb = Instance.new("TextLabel")
+            lb.Size = UDim2.new(1, 0, 1, 0)
+            lb.BackgroundTransparency = 1
+            lb.Font = Enum.Font.GothamBold
+            lb.TextSize = 14
+            lb.TextColor3 = Color3.fromRGB(0, 240, 255)
+            lb.TextStrokeTransparency = 0
+            lb.Text = "Diamond"
+            lb.Parent = bb
+            e.bb, e.lb = bb, lb
+        end
+    else
+        if e.highlight then pcall(function() e.highlight:Destroy() end) e.highlight = nil end
+        if e.bb then pcall(function() e.bb:Destroy() end) e.bb = nil e.lb = nil end
+    end
+end
+
+do
+local function trackDiamond(o)
+    if diamonds[o] then return end
+    if not (o:IsA("BasePart") or o:IsA("Model")) then return end
+    if not o.Name:lower():find("diamond", 1, true) then return end
+    if isEggOrPropRelated(o) then return end
+    diamonds[o] = {
+        obj = o,
+        skipUntil = 0, tries = 0,
+        bad = false, badUntil = 0,
+        vis = false, visUntil = 0,
+        part = nil, highlight = nil, bb = nil, lb = nil,
+    }
+end
+
+task.spawn(function()
+    local list = workspace:GetDescendants()
+    for i = 1, #list do
+        trackDiamond(list[i])
+        if i % 1500 == 0 then task.wait() end
+    end
+end)
+bind(workspace.DescendantAdded, trackDiamond)
+bind(workspace.DescendantRemoving, function(o)
+    if diamonds[o] then
+        updateDiamondHighlight(diamonds[o], false)
+        diamonds[o] = nil
+    end
+end)
+
+end
+
+local function getDiamondPart(o, e)
+    local p = e.part
+    if p and p.Parent then return p end
+    if o:IsA("BasePart") then p = o else p = o:FindFirstChildWhichIsA("BasePart", true) end
+    e.part = p
+    if p and diamondEspOn then updateDiamondHighlight(e, true) end
+    return p
+end
+
+local isVisible
+do
+local function rawVisible(o)
+    if o:IsA("BasePart") then return o.Transparency < 0.95 end
+    for _, d in ipairs(o:GetDescendants()) do
+        if d:IsA("BasePart") and d.Transparency < 0.95 then return true end
+    end
+    return false
+end
+
+function isVisible(o, e, now)
+    if now >= e.visUntil then
+        e.vis = rawVisible(o)
+        e.visUntil = now + VIS_TTL
+    end
+    return e.vis
+end
+end
+
+local function isInteractive(o)
+    return o:FindFirstChildWhichIsA("TouchTransmitter", true) ~= nil
+        or o:FindFirstChildWhichIsA("ProximityPrompt", true) ~= nil
+end
+
+local function isBad(o, e, now)
+    if now >= e.badUntil then
+        e.bad = belongsToHumanoid(o) or isEggOrPropRelated(o)
+        e.badUntil = now + STATIC_TTL
+    end
+    return e.bad
+end
+
+-- Remote Listener für DiamondRush
+do
+    local pa = ReplicatedStorage:FindFirstChild("PetAscent")
+    local ev = pa and pa:FindFirstChild("DiamondRush")
+    if ev and ev:IsA("RemoteEvent") then
+        bind(ev.OnClientEvent, function(data)
+            if type(data) ~= "table" then return end
+            if data.kind == "pickup" then
+                collectedCount = collectedCount + 1
+                if typeof(data.position) == "Vector3" then
+                    local best, bestD
+                    for o, e in pairs(diamonds) do
+                        local part = getDiamondPart(o, e)
+                        if part then
+                            local d = (part.Position - data.position).Magnitude
+                            if d <= 25 and (not bestD or d < bestD) then best, bestD = e, d end
+                        end
+                    end
+                    if best then
+                        best.skipUntil = tick() + PICKUP_SKIP
+                        best.tries = 0
+                    end
+                end
+            end
+        end)
+    end
+end
+
+--// UMGEBUNG AUSBLENDEN (Bäume, Palmen, tote Bäume, Steine/Felsen)
+-- Reihenfolge der Zuordnung: tote Bäume -> Palmen -> Steine -> normale Bäume
+local HIDE = {
+    {id="tree", name={"Bäume","Trees"},
+        kw={"tree","baum","pine","oak","bush","busch","foliage","leaves","tanne","fichte","birch","birke","hedge"}},
+    {id="palm", name={"Palmen","Palms"},
+        kw={"palm"}},
+    {id="dead", name={"Tote Bäume","Dead trees"},
+        kw={"dead","withered","stump","stumpf","burnt","charred","dried","abgestorben","kahl","dry","bare"},
+        need={"tree","baum","trunk","stamm","wood","holz","stump","stumpf","palm"}},
+    {id="rock", name={"Steine & Felsen","Rocks & stones"},
+        kw={"rock","stone","stein","fels","boulder","pebble","granite","rubble","gravel","brocken","kiesel","basalt","cobble","geroell","ger\195\182ll"},
+        no={"wall","wand","mauer","berg","mountain","border","grenze","boundary","terrain","floor","boden","ground","path","road","bridge","cliff"},
+        noSelf={"platform","plattform","stair","treppe","door","gate","fence","zaun","shop","stage","foundation","spawn","plot","base","pillar","column","tower","turm","house","haus","building"},
+        maxSize=30},
+}
+local HIDE_ORDER = {"dead","palm","rock","tree"}
+local HIDE_BY = {}
+for _,d in ipairs(HIDE) do HIDE_BY[d.id]=d end
+-- Materialien, die auf Felsen hindeuten (Fallback für Teile ohne sprechenden Namen)
+HIDE_BY.rock.mats={
+    [Enum.Material.Rock]=true,[Enum.Material.Slate]=true,[Enum.Material.Basalt]=true,
+    [Enum.Material.Granite]=true,[Enum.Material.Limestone]=true,[Enum.Material.Sandstone]=true,
+}
+
+local hideOn = {}
+local hideGen = {}
+local hideSaved = setmetatable({}, {__mode="k"})
+local hideCat = setmetatable({}, {__mode="k"})
+
+local function smallEnough(o,d)
+    local ok,sz=pcall(function() return o.Size end)
+    if not ok or math.max(sz.X,sz.Y,sz.Z)>d.maxSize then return false end
+    local a=o.Parent
+    for _=1,3 do
+        if not a or a==workspace then break end
+        if a:IsA("Model") and has(a.Name:lower(),unpack(d.kw)) then
+            local ok2,ms=pcall(function() return a:GetExtentsSize() end)
+            if ok2 and math.max(ms.X,ms.Y,ms.Z)>d.maxSize*2 then return false end
+            break
+        end
+        a=a.Parent
+    end
+    return true
+end
+
+local function classify(o)
+    local c = hideCat[o]
+    if c ~= nil then return c end
+    local res = false
+    local t = o.Name
+    local a = o.Parent
+    for _=1,3 do
+        if a and a ~= workspace then t = t.." "..a.Name a = a.Parent else break end
+    end
+    t = t:lower()
+    local own = (o.Name.." "..(o.Parent and o.Parent.Name or "")):lower()
+    if not has(t,"egg","eier","diamond") and not belongsToHumanoid(o) then
+        for _,id in ipairs(HIDE_ORDER) do
+            local d = HIDE_BY[id]
+            if has(t,unpack(d.kw)) and (not d.need or has(t,unpack(d.need)))
+                and not (d.no and has(t,unpack(d.no)))
+                and not (d.noSelf and has(own,unpack(d.noSelf)))
+                and (not d.maxSize or smallEnough(o,d)) then
+                res = id
+                break
+            end
+        end
+        -- Fallback: Felsen ohne sprechenden Namen anhand des Materials
+        if not res and o:IsA("BasePart") and HIDE_BY.rock.mats[o.Material] then
+            local d = HIDE_BY.rock
+            local ok, sz = pcall(function() return o.Size end)
+            if ok and not has(t,unpack(d.no)) and not has(own,unpack(d.noSelf)) then
+                local mx, mn = math.max(sz.X,sz.Y,sz.Z), math.min(sz.X,sz.Y,sz.Z)
+                local fine = mx <= 18 and mn*4 >= mx          -- klein & "klobig" (keine Wände/Böden)
+                local p = o.Parent
+                if fine and p and p ~= workspace and p:IsA("Model") then
+                    local ok2, ms = pcall(function() return p:GetExtentsSize() end)
+                    if ok2 and math.max(ms.X,ms.Y,ms.Z) > 40 then fine = false end
+                end
+                local b = o.Parent
+                while fine and b and b ~= workspace do
+                    if has(b.Name:lower(),"base","plot","spawn") then fine = false end
+                    b = b.Parent
+                end
+                if fine then res = "rock" end
+            end
+        end
+    end
+    hideCat[o] = res
+    return res
+end
+
+local function hidePart(o)
+    if hideSaved[o] == nil then hideSaved[o] = o.Transparency end
+    o.Transparency = 1
+end
+
+local function setHide(id, v)
+    hideOn[id] = v or nil
+    hideGen[id] = (hideGen[id] or 0) + 1
+    local gen = hideGen[id]
+    if v then
+        task.spawn(function()
+            local list = workspace:GetDescendants()
+            for i = 1, #list do
+                if hideGen[id] ~= gen then return end
+                local o = list[i]
+                if o:IsA("BasePart") and o.Parent and classify(o) == id then pcall(hidePart, o) end
+                if i % 600 == 0 then task.wait() end
+            end
+        end)
+    else
+        for o, orig in pairs(hideSaved) do
+            if hideCat[o] == id then
+                if o.Parent then pcall(function() o.Transparency = orig end) end
+                hideSaved[o] = nil
+            end
+        end
+    end
+end
+
+local function restoreAllHidden()
+    for id in pairs(hideGen) do hideGen[id] = hideGen[id] + 1 end
+    for o, orig in pairs(hideSaved) do
+        if o.Parent then pcall(function() o.Transparency = orig end) end
+        hideSaved[o] = nil
+    end
+    hideOn = {}
+end
+
+bind(workspace.DescendantAdded, function(o)
+    if next(hideOn) and o:IsA("BasePart") then
+        local id = classify(o)
+        if id and hideOn[id] then pcall(hidePart, o) end
+    end
+end)
+
+--// KANDIDATEN-CACHE (Egg ESP)
+local cand,exL={}, {}
+local function ptext(o) return (o.ObjectText.." "..o.ActionText):lower() end
+
+do
+local watched={}
+local function consider(o)
+    if o.ClassName=="ProximityPrompt" then
+        if has(ptext(o),unpack(allKeys)) then cand[o]=true end
+        if has(ptext(o),unpack(EXCL)) then exL[o]=true else exL[o]=nil end
+    elseif o:IsA("TextLabel") then
+        if not watched[o] then
+            watched[o]=true
+            bind(o:GetPropertyChangedSignal("Text"), function() consider(o) end)
+        end
+        if has(clean(o.Text),unpack(allKeys)) then cand[o]=true else cand[o]=nil end
+        if has(clean(o.Text),unpack(EXCL)) then exL[o]=true else exL[o]=nil end
+    elseif o:IsA("PVInstance") then
+        if has(o.Name:lower(),unpack(allKeys)) or has(attrText(o),unpack(allKeys)) then
+            cand[o]=true
+        end
+    end
+end
+
+bind(workspace.DescendantAdded, consider)
+task.spawn(function()
+    local d=workspace:GetDescendants()
+    for i=1,#d do
+        consider(d[i])
+        if i%400==0 then RS.Heartbeat:Wait() end
+    end
+end)
+
+end
+
+local function eggRoot(t)
+    if t and t:IsA("Attachment") then t=t.Parent end
+    if not (t and t:IsA("PVInstance")) or t==workspace then return nil end
+    local r,a=t,t.Parent
+    while a and a~=workspace and a:IsA("Model") and not big(a) do r=a a=a.Parent end
+    return r
+end
+
+local function buildItems(rp)
+    local items,seen={}, {}
+    local ch=P.Character
+    local exRoots={}
+    for o in pairs(exL) do
+        if not o.Parent then exL[o]=nil
+        else
+            local ad
+            if o.ClassName=="ProximityPrompt" then ad=o.Parent
+            else
+                local gui=o:FindFirstAncestorWhichIsA("LayerCollector")
+                ad=gui and (gui.Adornee or gui.Parent)
+            end
+            if ad and ad~=workspace then
+                local r=eggRoot(ad)
+                if r then exRoots[#exRoots+1]=r end
+            end
+        end
+    end
+
+    local function exByText(t)
+        for _,r in ipairs(exRoots) do
+            if r==t or t:IsDescendantOf(r) or r:IsDescendantOf(t) then return true end
+        end
+        return false
+    end
+
+    for o in pairs(cand) do
+        if not o.Parent then cand[o]=nil
+        else
+            local tgt,kt,nm,viaText
+            if o.ClassName=="ProximityPrompt" then
+                kt=ptext(o) tgt=eggRoot(o.Parent) nm=o.ObjectText
+            elseif o:IsA("TextLabel") then
+                kt=clean(o.Text) nm=kt viaText=true
+                local gui=o:FindFirstAncestorWhichIsA("LayerCollector")
+                local ad=gui and (gui.Adornee or gui.Parent)
+                if ad and ad~=workspace and #kt<=40 then tgt=eggRoot(ad) end
+            else
+                kt=o.Name:lower()..attrText(o) tgt=o nm=o.Name
+                local pp=o:FindFirstChildWhichIsA("ProximityPrompt",true)
+                if anc(o) or (pp and pp.ObjectText~="") then tgt=nil end
+            end
+
+            if tgt and not seen[tgt] and not (ch and tgt:IsDescendantOf(ch)) and not has(kt,unpack(EXCL)) and not has(kt,unpack(EXCL_SELF)) and not has(tgt.Name:lower(),unpack(EXCL_SELF)) and not exAnc(tgt) and not big(tgt) and not exByText(tgt) then
+                seen[tgt]=true
+                local pos=cfOf(tgt).Position
+                items[#items+1]={tgt=tgt,kt=kt,n=nm,pos=pos,d=(pos-rp).Magnitude,ign=skip(tgt),txt=viaText,
+                    s=has(kt,"rainbow","regenbogen") and 2 or (has(kt,"retro") and 3 or (has(kt,"gold") and 1 or 0))}
+            end
+        end
+    end
+    return items
+end
+
+--// SERVER-HOP (gibt {de,en} zurück)
+function X.hop()
+    local TPS=game:GetService("TeleportService")
+    local H=game:GetService("HttpService")
+    local function get(u)
+        local ok,r=pcall(function() return game:HttpGet(u) end)
+        if ok and r then return r end
+        local rq=(syn and syn.request) or request or http_request
+        return rq({Url=u}).Body
+    end
+    local url="https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100"
+    local c,cursor={},""
+    for _=1,3 do
+        local ok,res=pcall(function() return H:JSONDecode(get(url..(cursor~="" and "&cursor="..cursor or ""))) end)
+        if not ok or not res or not res.data then break end
+        for _,s in ipairs(res.data) do
+            if s.id~=game.JobId and s.playing<s.maxPlayers then c[#c+1]=s end
+        end
+        if #c>0 or not res.nextPageCursor then break end
+        cursor=res.nextPageCursor
+    end
+    if #c==0 then return {"Kein anderer Server gefunden","No other server found"} end
+    if AUTOLOAD and queue_on_teleport then
+        queue_on_teleport('loadstring(game:HttpGet("'..AUTOLOAD..'"))()')
+    end
+    TPS:TeleportToPlaceInstance(game.PlaceId,c[math.random(1,math.min(#c,15))].id,P)
+    return {"Wechsle Server...","Switching server..."}
+end
+
+--// SERVER-REJOIN
+function X.rejoin()
+    local TPS=game:GetService("TeleportService")
+    if AUTOLOAD and queue_on_teleport then
+        queue_on_teleport('loadstring(game:HttpGet("'..AUTOLOAD..'"))()')
+    end
+    if #Players:GetPlayers()<=1 then
+        TPS:Teleport(game.PlaceId,P)
+    else
+        TPS:TeleportToPlaceInstance(game.PlaceId,game.JobId,P)
+    end
+    return {"Verbinde neu...","Rejoining..."}
+end
+
+--=====================================================================
+--// GUI  -  ANTONIO HUB (Menü)
+--=====================================================================
+-- Aktuelle Menüfarben (werden vom Theme-System überschrieben)
+local C={
+    side=rgb(18,18,23),
+    bg=rgb(13,13,17),
+    card=rgb(22,22,28),
+    btn=rgb(31,31,39),
+    btxt=rgb(96,130,246),      -- = accent (wird synchron gehalten)
+    border=rgb(36,36,45),
+    hover=rgb(30,30,38),
+    off=rgb(52,52,64),
+    accent=rgb(96,130,246),
+    txt=rgb(230,230,238),
+    sub=rgb(122,122,140),
+    danger=rgb(232,84,84),
+}
+local FONT=Enum.Font.GothamMedium
+local FONTB=Enum.Font.GothamBold
+
+-- Schriftarten-Sets {normal, fett}; FONT/FONTB dienen nur als Platzhalter
+X.FONTSETS={
+    {Enum.Font.GothamMedium,Enum.Font.GothamBold},
+    {Enum.Font.SourceSans,Enum.Font.SourceSansBold},
+    {Enum.Font.Arial,Enum.Font.ArialBold},
+    {Enum.Font.Ubuntu,Enum.Font.Ubuntu},
+    {Enum.Font.Code,Enum.Font.Code},
+}
+X.fcur={FONT,FONTB}
+X.txt=setmetatable({},{__mode="k"})      -- Objekte mit Schrift (für Schriftart-Wechsel)
+
+--// THEME-SYSTEM
+-- Jedes Menü-Objekt merkt sich beim Erstellen, welche Farb-"Rolle" es nutzt (X.rb).
+-- Beim Theme-Wechsel werden einfach alle Objekte neu eingefärbt - ohne Sonderfälle.
+X.ROLES={"accent","txt","sub","side","bg","card","btn","border","hover","off"}
+X.COLPROPS={"BackgroundColor3","TextColor3","Color","ScrollBarImageColor3"}
+X.rb=setmetatable({},{__mode="k"})
+X.built=false
+X.theme={idx=1,accent=nil}
+
+function X.mkTheme(name,side,bg,card,btn,txt,sub,accent,ex)
+    local lum=bg.R*0.299+bg.G*0.587+bg.B*0.114
+    local dir=lum<0.5 and Color3.new(1,1,1) or Color3.new(0,0,0)
+    local t={side=side,bg=bg,card=card,btn=btn,txt=txt,sub=sub,accent=accent,
+        border=card:Lerp(dir,0.07),hover=card:Lerp(dir,0.05),off=btn:Lerp(dir,0.12)}
+    if ex then for k,v in pairs(ex) do t[k]=v end end
+    return {name=name,c=t}
+end
+X.THEMES={
+    X.mkTheme({"Dunkel","Dark"},C.side,C.bg,C.card,C.btn,C.txt,C.sub,C.accent,{border=C.border,hover=C.hover,off=C.off}),
+    X.mkTheme({"Mitternacht","Midnight"},rgb(14,16,30),rgb(9,11,22),rgb(18,21,40),rgb(28,32,58),rgb(226,230,246),rgb(118,126,160),rgb(110,150,255)),
+    X.mkTheme({"Amoled","Amoled"},rgb(0,0,0),rgb(0,0,0),rgb(11,11,13),rgb(22,22,26),rgb(236,236,240),rgb(120,120,132),rgb(96,130,246)),
+    X.mkTheme({"Hell","Light"},rgb(236,238,244),rgb(246,247,250),rgb(255,255,255),rgb(226,229,238),rgb(28,30,40),rgb(104,108,124),rgb(70,100,230)),
+    X.mkTheme({"Wald","Forest"},rgb(14,22,18),rgb(10,16,13),rgb(19,30,24),rgb(28,44,35),rgb(228,240,232),rgb(116,140,125),rgb(70,200,120)),
+    X.mkTheme({"Karmesin","Crimson"},rgb(24,13,15),rgb(17,9,11),rgb(31,18,21),rgb(45,26,30),rgb(244,230,232),rgb(150,118,124),rgb(235,70,85)),
+    X.mkTheme({"Violett","Purple"},rgb(19,14,28),rgb(13,9,21),rgb(26,19,38),rgb(38,29,56),rgb(236,230,248),rgb(134,120,160),rgb(165,100,255)),
+}
+X.ACCENTS={
+    rgb(96,130,246),rgb(165,100,255),rgb(255,80,160),rgb(235,70,85),
+    rgb(255,140,0),rgb(240,200,40),rgb(70,200,120),rgb(0,200,230),
+}
+function X.same(a,b)
+    return math.abs(a.R-b.R)+math.abs(a.G-b.G)+math.abs(a.B-b.B)<0.02
+end
+
+--// Sprache: Texte werden als {Deutsch, English} (oder Funktion) übergeben
+local lang="de"
+local reg={}
+-- Weitere Sprachen: Übersetzung über den englischen Text (Fallback = Englisch)
+-- Spalten: {Englisch, Portugiesisch, Spanisch, Französisch, Japanisch, Russisch}
+X.TR={
+{"Egg ESP Settings","Config. ESP de Ovos","Ajustes ESP de huevos","Réglages ESP œufs","卵ESP設定","Настройки ESP яиц"},
+{"Player ESP Settings","Config. ESP de Jogadores","Ajustes ESP de jugadores","Réglages ESP joueurs","プレイヤーESP設定","Настройки ESP игроков"},
+{"Farm","Farm","Farmeo","Farm","ファーム","Фарм"},
+{"Misc","Diversos","Varios","Divers","その他","Разное"},
+{"Settings","Configurações","Ajustes","Paramètres","設定","Настройки"},
+{": toggle menu",": mostrar/ocultar menu",": mostrar/ocultar menú",": afficher/masquer le menu",": メニュー切替",": показать/скрыть меню"},
+{"None","Nenhuma","Ninguna","Aucune","なし","Нет"},
+{"All","Todos","Todos","Tous","すべて","Все"},
+{"General","Geral","General","Général","一般","Общее"},
+{"Eggs","Ovos","Huevos","Œufs","卵","Яйца"},
+{"Event","Evento","Evento","Événement","イベント","Событие"},
+{"Heavy","Pesado","Pesado","Lourd","ヘビー","Тяжёлое"},
+{"Mutations","Mutações","Mutaciones","Mutations","ミューテーション","Мутации"},
+{"Display","Exibição","Visualización","Affichage","表示","Отображение"},
+{"Color","Cor","Color","Couleur","色","Цвет"},
+{"Tracer","Tracer","Trazador","Traceur","トレーサー","Трассер"},
+{"Filter","Filtro","Filtro","Filtre","フィルター","Фильтр"},
+{"System","Sistema","Sistema","Système","システム","Система"},
+{"Player ESP","ESP de Jogadores","ESP de jugadores","ESP joueurs","プレイヤーESP","ESP игроков"},
+{"Extras","Extras","Extras","Extras","追加","Дополнительно"},
+{"Color & filter","Cor e filtro","Color y filtro","Couleur et filtre","色とフィルター","Цвет и фильтр"},
+{"Auto egg farm","Farm automático de ovos","Farmeo automático de huevos","Farm d'œufs auto","自動エッグファーム","Авто-фарм яиц"},
+{"Home","Casa","Casa","Maison","ホーム","Дом"},
+{"Diamond","Diamante","Diamante","Diamant","ダイヤモンド","Алмаз"},
+{"Auto Diamond","Diamante auto","Diamante auto","Diamant auto","自動ダイヤ","Авто алмаз"},
+{"Quick event","Evento rápido","Evento rápido","Événement rapide","クイックイベント","Быстрое событие"},
+{"Hide environment","Ocultar ambiente","Ocultar entorno","Masquer le décor","環境を隠す","Скрыть окружение"},
+{"Performance","Desempenho","Rendimiento","Performance","パフォーマンス","Производительность"},
+{"Shaders","Shaders","Shaders","Shaders","シェーダー","Шейдеры"},
+{"Actions","Ações","Acciones","Actions","アクション","Действия"},
+{"Language","Idioma","Idioma","Langue","言語","Язык"},
+{"Appearance","Aparência","Apariencia","Apparence","外観","Оформление"},
+{"Info bar","Barra de info","Barra de info","Barre d'infos","情報バー","Инфо-панель"},
+{"Saving","Salvar","Guardado","Sauvegarde","保存","Сохранение"},
+{"Keybinds","Atalhos","Atajos","Raccourcis","キー設定","Горячие клавиши"},
+{"Show bases","Mostrar bases","Mostrar bases","Afficher les bases","ベースを表示","Показывать базы"},
+{"Also shows eggs near bases.","Mostra também ovos perto das bases.","También muestra huevos cerca de las bases.","Affiche aussi les œufs près des bases.","ベース付近の卵も表示します。","Также показывает яйца рядом с базами."},
+{"ESP Reset","Resetar ESP","Reiniciar ESP","Réinit. ESP","ESPリセット","Сброс ESP"},
+{"All active ESP off (eggs, players, diamonds).","Desliga todos os ESP ativos (ovos, jogadores, diamantes).","Apaga todos los ESP activos (huevos, jugadores, diamantes).","Désactive tous les ESP actifs (œufs, joueurs, diamants).","有効なESPをすべてオフ(卵・プレイヤー・ダイヤ)。","Выключает все активные ESP (яйца, игроки, алмазы)."},
+{"Turn off","Desligar","Apagar","Éteindre","オフにする","Выключить"},
+{"Text size","Tamanho do texto","Tamaño del texto","Taille du texte","文字サイズ","Размер текста"},
+{"Size of the ESP labels.","Tamanho dos rótulos do ESP.","Tamaño de las etiquetas del ESP.","Taille des étiquettes ESP.","ESPラベルの大きさ。","Размер подписей ESP."},
+{"Small","Pequeno","Pequeño","Petit","小","Малый"},
+{"Normal","Normal","Normal","Normal","標準","Обычный"},
+{"Large","Grande","Grande","Grand","大","Большой"},
+{"Show name","Mostrar nome","Mostrar nombre","Afficher le nom","名前を表示","Показать имя"},
+{"Shows the egg's name.","Mostra o nome do ovo.","Muestra el nombre del huevo.","Affiche le nom de l'œuf.","卵の名前を表示します。","Показывает название яйца."},
+{"Show distance","Mostrar distância","Mostrar distancia","Afficher la distance","距離を表示","Показать расстояние"},
+{"Shows the distance in meters.","Mostra a distância em metros.","Muestra la distancia en metros.","Affiche la distance en mètres.","距離をメートルで表示します。","Показывает расстояние в метрах."},
+{"Show size","Mostrar tamanho","Mostrar tamaño","Afficher la taille","サイズを表示","Показать размер"},
+{"Shows the object size after the name.","Mostra o tamanho do objeto após o nome.","Muestra el tamaño del objeto tras el nombre.","Affiche la taille de l'objet après le nom.","名前の後にオブジェクトサイズを表示します。","Показывает размер объекта после имени."},
+{"Outline","Contorno","Contorno","Contour","アウトライン","Контур"},
+{"Highlights the egg with a colored outline.","Destaca o ovo com um contorno colorido.","Resalta el huevo con un contorno de color.","Met l'œuf en valeur avec un contour coloré.","卵を色付きの枠で強調します。","Выделяет яйцо цветным контуром."},
+{"Custom color","Cor personalizada","Color personalizado","Couleur perso","カスタムカラー","Свой цвет"},
+{"All eggs in one color instead of type colors.","Todos os ovos em uma cor em vez das cores por tipo.","Todos los huevos de un color en vez de colores por tipo.","Tous les œufs dans une couleur au lieu des couleurs par type.","タイプ別の色ではなく、全ての卵を1色にします。","Все яйца одного цвета вместо цветов по типам."},
+{"Pick color","Escolher cor","Elegir color","Choisir la couleur","色を選択","Выбрать цвет"},
+{"Click the swatch to open the color picker.","Clique na amostra para abrir o seletor de cores.","Haz clic en la muestra para abrir el selector de color.","Clique sur l'échantillon pour ouvrir le sélecteur.","色見本をクリックしてカラーピッカーを開きます。","Нажмите на образец, чтобы открыть палитру."},
+{"Tracer lines","Linhas tracer","Líneas trazadoras","Lignes traceur","トレーサー線","Линии трассера"},
+{"Line from the screen to every marked egg.","Linha da tela até cada ovo marcado.","Línea desde la pantalla hasta cada huevo marcado.","Ligne de l'écran à chaque œuf marqué.","画面からマークした卵まで線を引きます。","Линия от экрана до каждого отмеченного яйца."},
+{"Origin","Origem","Origen","Origine","起点","Начало"},
+{"Where the lines start.","Onde as linhas começam.","Dónde empiezan las líneas.","Où les lignes commencent.","線の開始位置。","Откуда начинаются линии."},
+{"Bottom","Embaixo","Abajo","Bas","下","Низ"},
+{"Center","Centro","Centro","Centre","中央","Центр"},
+{"Line width","Espessura da linha","Grosor de línea","Épaisseur de ligne","線の太さ","Толщина линии"},
+{"Tracer thickness in pixels.","Espessura do tracer em pixels.","Grosor del trazador en píxeles.","Épaisseur du traceur en pixels.","トレーサーの太さ(ピクセル)。","Толщина трассера в пикселях."},
+{"Max. distance","Dist. máx.","Dist. máx.","Dist. max.","最大距離","Макс. дистанция"},
+{"Eggs farther away are hidden.","Ovos mais distantes são ocultados.","Los huevos más lejanos se ocultan.","Les œufs plus éloignés sont masqués.","遠い卵は非表示になります。","Более далёкие яйца скрыты."},
+{"Max. markers","Máx. marcadores","Máx. marcadores","Marqueurs max.","最大マーカー数","Макс. меток"},
+{"Limits the number of simultaneous markers.","Limita o número de marcadores simultâneos.","Limita el número de marcadores simultáneos.","Limite le nombre de marqueurs simultanés.","同時に表示するマーカー数を制限します。","Ограничивает число одновременных меток."},
+{"Restore defaults","Restaurar padrão","Restaurar valores","Rétablir par défaut","初期値に戻す","Сбросить по умолчанию"},
+{"Resets all egg ESP settings.","Redefine todas as configurações do ESP de ovos.","Restablece todos los ajustes del ESP de huevos.","Réinitialise tous les réglages ESP des œufs.","卵ESPの設定をすべて初期化します。","Сбрасывает все настройки ESP яиц."},
+{"Reset","Resetar","Reiniciar","Réinitialiser","リセット","Сброс"},
+{"Shows other players through walls.","Mostra outros jogadores através das paredes.","Muestra a otros jugadores a través de las paredes.","Affiche les autres joueurs à travers les murs.","壁越しに他のプレイヤーを表示します。","Показывает других игроков сквозь стены."},
+{"Names","Nomes","Nombres","Noms","名前","Имена"},
+{"Username, display name or both.","Nome de usuário, de exibição ou ambos.","Usuario, nombre visible o ambos.","Pseudo, nom affiché ou les deux.","ユーザー名、表示名、または両方。","Логин, отображаемое имя или оба."},
+{"Off","Desl.","Apag.","Off","オフ","Выкл"},
+{"Name","Nome","Nombre","Nom","名前","Имя"},
+{"Both","Ambos","Ambos","Les deux","両方","Оба"},
+{"Colored outline around the player.","Contorno colorido ao redor do jogador.","Contorno de color alrededor del jugador.","Contour coloré autour du joueur.","プレイヤーの周りに色付きの枠を表示。","Цветной контур вокруг игрока."},
+{"Item ESP","ESP de item","ESP de objeto","ESP objet","アイテムESP","ESP предмета"},
+{"Shows the item only while the player is holding one.","Mostra o item só enquanto o jogador o segura.","Muestra el objeto solo mientras el jugador lo sostiene.","Affiche l'objet seulement s'il est tenu en main.","手に持っている間だけアイテムを表示。","Показывает предмет, только пока он в руке."},
+{"Leaderstats ESP","ESP de leaderstats","ESP de leaderstats","ESP leaderstats","リーダースタッツESP","ESP leaderstats"},
+{"Shows the player's leaderstats (e.g. coins, kills).","Mostra os leaderstats do jogador (ex.: moedas, kills).","Muestra los leaderstats del jugador (p. ej. monedas, kills).","Affiche les leaderstats du joueur (pièces, kills…).","プレイヤーのリーダースタッツ(コイン、キル等)を表示。","Показывает leaderstats игрока (монеты, убийства)."},
+{"Skeleton ESP","ESP de esqueleto","ESP de esqueleto","ESP squelette","スケルトンESP","ESP скелета"},
+{"Skeleton incl. head (needs Drawing).","Esqueleto com cabeça (requer Drawing).","Esqueleto con cabeza (requiere Drawing).","Squelette avec tête (nécessite Drawing).","頭を含むスケルトン(Drawing必須)。","Скелет с головой (нужен Drawing)."},
+{"Box ESP","ESP de caixa","ESP de caja","ESP boîte","ボックスESP","ESP рамки"},
+{"Box around the player (needs Drawing).","Caixa ao redor do jogador (requer Drawing).","Caja alrededor del jugador (requiere Drawing).","Boîte autour du joueur (nécessite Drawing).","プレイヤーを囲むボックス(Drawing必須)。","Рамка вокруг игрока (нужен Drawing)."},
+{"Box type","Tipo de caixa","Tipo de caja","Type de boîte","ボックス種類","Тип рамки"},
+{"2D frame, 3D cuboid or corners only.","Moldura 2D, cubo 3D ou só cantos.","Marco 2D, cubo 3D o solo esquinas.","Cadre 2D, cube 3D ou coins seulement.","2D枠、3Dボックス、または角のみ。","2D-рамка, 3D-куб или только углы."},
+{"Corners","Cantos","Esquinas","Coins","角","Углы"},
+{"Line to every player.","Linha até cada jogador.","Línea hasta cada jugador.","Ligne vers chaque joueur.","全プレイヤーへ線を引きます。","Линия к каждому игроку."},
+{"Tracer origin","Origem do tracer","Origen del trazador","Origine du traceur","トレーサー起点","Начало трассера"},
+{"Where the line starts.","Onde a linha começa.","Dónde empieza la línea.","Où la ligne commence.","線の開始位置。","Откуда начинается линия."},
+{"Color for text, outline, skeleton, box and tracer.","Cor do texto, contorno, esqueleto, caixa e tracer.","Color de texto, contorno, esqueleto, caja y trazador.","Couleur du texte, contour, squelette, boîte et traceur.","文字・枠・スケルトン・ボックス・トレーサーの色。","Цвет текста, контура, скелета, рамки и трассера."},
+{"Players farther away are hidden.","Jogadores mais distantes são ocultados.","Los jugadores más lejanos se ocultan.","Les joueurs plus éloignés sont masqués.","遠いプレイヤーは非表示になります。","Более далёкие игроки скрыты."},
+{"Resets all player ESP settings.","Redefine todas as configurações do ESP de jogadores.","Restablece todos los ajustes del ESP de jugadores.","Réinitialise tous les réglages ESP des joueurs.","プレイヤーESPの設定をすべて初期化します。","Сбрасывает все настройки ESP игроков."},
+{"Grab egg (E) → home → click ground.","Pegar ovo (E) → casa → clicar no chão.","Coger huevo (E) → casa → clic en el suelo.","Prendre l'œuf (E) → maison → clic au sol.","卵を取る(E)→ホーム→地面をクリック。","Взять яйцо (E) → дом → клик по земле."},
+{"Status","Status","Estado","Statut","状態","Статус"},
+{"Egg selection","Seleção de ovo","Selección de huevo","Choix de l'œuf","卵の選択","Выбор яйца"},
+{"Click = next, right-click = back.","Clique = próximo, clique direito = voltar.","Clic = siguiente, clic derecho = atrás.","Clic = suivant, clic droit = retour.","クリック=次、右クリック=戻る。","Клик — далее, ПКМ — назад."},
+{"Wait at egg","Espera no ovo","Espera en el huevo","Attente à l'œuf","卵での待機","Ожидание у яйца"},
+{"Seconds before E is pressed.","Segundos antes de pressionar E.","Segundos antes de pulsar E.","Secondes avant d'appuyer sur E.","Eを押すまでの秒数。","Секунды до нажатия E."},
+{"Set home","Definir casa","Fijar casa","Définir maison","ホーム設定","Задать дом"},
+{"Saves your position (persists).","Salva sua posição (permanente).","Guarda tu posición (permanente).","Enregistre ta position (persistant).","現在位置を保存します(保持されます)。","Сохраняет вашу позицию (постоянно)."},
+{"Set","Definir","Fijar","Définir","設定","Задать"},
+{"Go home","Ir para casa","Ir a casa","Aller à la maison","ホームへ","В дом"},
+{"Teleports you to your home right away.","Teleporta você para casa na hora.","Te teletransporta a casa al instante.","Te téléporte immédiatement à la maison.","すぐにホームへテレポートします。","Мгновенно телепортирует домой."},
+{"Teleport","Teleportar","Teletransportar","Téléporter","テレポート","Телепорт"},
+{"Clear home","Apagar casa","Borrar casa","Effacer maison","ホーム削除","Удалить дом"},
+{"Removes the saved home.","Remove a casa salva.","Elimina la casa guardada.","Supprime la maison enregistrée.","保存したホームを削除します。","Удаляет сохранённый дом."},
+{"Clear","Apagar","Borrar","Effacer","削除","Удалить"},
+{"Auto quick event","Evento rápido auto","Evento rápido auto","Événement rapide auto","自動クイックイベント","Авто быстрое событие"},
+{"Automatically clicks x3 quick events.","Clica automaticamente nos eventos rápidos x3.","Hace clic automático en los eventos rápidos x3.","Clique automatiquement les événements rapides x3.","x3クイックイベントを自動でクリックします。","Автоматически нажимает быстрые события x3."},
+{"Quick event delay","Atraso do evento rápido","Retraso del evento rápido","Délai événement rapide","クイックイベント遅延","Задержка быстрого события"},
+{"Wait time in seconds before the click.","Tempo de espera em segundos antes do clique.","Tiempo de espera en segundos antes del clic.","Temps d'attente en secondes avant le clic.","クリック前の待機時間(秒)。","Время ожидания в секундах перед кликом."},
+{"Ready","Pronto","Listo","Prêt","準備完了","Готово"},
+{"Searching egg...","Procurando ovo...","Buscando huevo...","Recherche d'œuf...","卵を検索中...","Поиск яйца..."},
+{"None available right now","Nenhum disponível agora","Ninguno disponible ahora","Aucun disponible","現在なし","Сейчас нет"},
+{"Fetching egg: ","Pegando ovo: ","Buscando huevo: ","Récupération : ","卵を取得: ","Беру яйцо: "},
+{"Returning home...","Voltando para casa...","Volviendo a casa...","Retour à la maison...","ホームへ戻り中...","Возвращаюсь домой..."},
+{"Pressing E: ","Pressionando E: ","Pulsando E: ","Appui sur E : ","E押下: ","Нажимаю E: "},
+{"No prompt found - pressing E","Sem prompt - pressionando E","Sin prompt - pulsando E","Aucun prompt - appui sur E","プロンプトなし - Eを押下","Нет подсказки — нажимаю E"},
+{"No home set (auto-set on start).","Nenhuma casa definida (auto ao iniciar).","Sin casa (se fija al iniciar).","Pas de maison (auto au démarrage).","ホーム未設定(開始時に自動設定)。","Дом не задан (авто при старте)."},
+{"Teleported!","Teleportado!","¡Teletransportado!","Téléporté !","テレポートしました!","Телепортировано!"},
+{"No home set yet.","Nenhuma casa definida.","Aún no hay casa.","Pas encore de maison.","ホーム未設定です。","Дом ещё не задан."},
+{"Home cleared.","Casa apagada.","Casa borrada.","Maison effacée.","ホームを削除しました。","Дом удалён."},
+{"FPS boost","Boost de FPS","Mejora de FPS","Boost FPS","FPSブースト","Буст FPS"},
+{"Graphics, effects and FPS cap in one go.","Gráficos, efeitos e limite de FPS de uma vez.","Gráficos, efectos y límite de FPS de una vez.","Graphismes, effets et limite FPS en un clic.","グラフィック・エフェクト・FPS制限を一括変更。","Графика, эффекты и лимит FPS разом."},
+{"Apply","Aplicar","Aplicar","Appliquer","適用","Применить"},
+{"Boost active!","Boost ativo!","¡Mejora activa!","Boost actif !","ブースト有効!","Буст включён!"},
+{"Minimize graphics","Minimizar gráficos","Minimizar gráficos","Réduire les graphismes","グラフィック最小化","Мин. графика"},
+{"Lowers shadows, materials, textures, sky & fog.","Reduz sombras, materiais, texturas, céu e névoa.","Reduce sombras, materiales, texturas, cielo y niebla.","Réduit ombres, matériaux, textures, ciel et brouillard.","影・マテリアル・テクスチャ・空・霧を下げます。","Снижает тени, материалы, текстуры, небо и туман."},
+{"Particles & effects off","Partículas e efeitos off","Partículas y efectos off","Particules et effets off","パーティクル&エフェクトOFF","Частицы и эффекты выкл"},
+{"Disables particles, fire, smoke and trails.","Desativa partículas, fogo, fumaça e rastros.","Desactiva partículas, fuego, humo y estelas.","Désactive particules, feu, fumée et traînées.","パーティクル・炎・煙・トレイルを無効化。","Отключает частицы, огонь, дым и следы."},
+{"Unlock FPS cap","Liberar limite de FPS","Quitar límite de FPS","Débloquer limite FPS","FPS制限解除","Снять лимит FPS"},
+{"Removes the FPS cap (needs setfpscap).","Remove o limite de FPS (requer setfpscap).","Quita el límite de FPS (requiere setfpscap).","Supprime la limite FPS (nécessite setfpscap).","FPS制限を解除(setfpscap必須)。","Снимает лимит FPS (нужен setfpscap)."},
+{"3D rendering off","Renderização 3D off","Renderizado 3D off","Rendu 3D off","3D描画OFF","3D-рендер выкл"},
+{"Black screen, ideal for AFK farming.","Tela preta, ideal para farm AFK.","Pantalla negra, ideal para farmeo AFK.","Écran noir, idéal pour farmer en AFK.","黒画面。放置ファームに最適。","Чёрный экран, идеально для AFK-фарма."},
+{"Shader preset","Preset de shader","Preset de shader","Préréglage shader","シェーダープリセット","Пресет шейдера"},
+{"Realistic","Realista","Realista","Réaliste","リアル","Реалистичный"},
+{"Cinematic","Cinemático","Cinemático","Cinématique","シネマティック","Кинематографичный"},
+{"Vivid","Vívido","Vívido","Éclatant","鮮やか","Яркий"},
+{"Sunset","Pôr do sol","Atardecer","Coucher de soleil","夕焼け","Закат"},
+{"Fullbright","Brilho total","Brillo total","Pleine lumière","フルブライト","Полная яркость"},
+{"Preset","Preset","Preset","Préréglage","プリセット","Пресет"},
+{"Intensity","Intensidade","Intensidad","Intensité","強さ","Интенсивность"},
+{"How strong the effects are.","Força dos efeitos.","Qué tan fuertes son los efectos.","Intensité des effets.","エフェクトの強さ。","Сила эффектов."},
+{"Low","Baixa","Baja","Faible","弱","Слабая"},
+{"High","Alta","Alta","Forte","強","Сильная"},
+{"Prevents idle kicks.","Evita kick por inatividade.","Evita expulsiones por inactividad.","Évite l'expulsion pour inactivité.","放置キックを防ぎます。","Предотвращает кик за бездействие."},
+{"AFK interval","Intervalo AFK","Intervalo AFK","Intervalle AFK","AFK間隔","Интервал AFK"},
+{"Seconds between anti-AFK clicks.","Segundos entre cliques anti-AFK.","Segundos entre clics anti-AFK.","Secondes entre les clics anti-AFK.","Anti-AFKクリックの間隔(秒)。","Секунды между кликами анти-AFK."},
+{"Switches to a different server.","Troca para outro servidor.","Cambia a otro servidor.","Passe sur un autre serveur.","別のサーバーへ移動します。","Переход на другой сервер."},
+{"Switch","Trocar","Cambiar","Changer","移動","Сменить"},
+{"Searching servers...","Procurando servidores...","Buscando servidores...","Recherche de serveurs...","サーバー検索中...","Поиск серверов..."},
+{"Reconnects you to this server.","Reconecta a este servidor.","Te reconecta a este servidor.","Te reconnecte à ce serveur.","このサーバーに再接続します。","Переподключает к этому серверу."},
+{"Rejoin","Reentrar","Reentrar","Rejoindre","再参加","Перезайти"},
+{"Switch failed","Falha ao trocar","Error al cambiar","Échec du changement","移動に失敗","Не удалось сменить"},
+{"Rejoin failed","Falha ao reentrar","Error al reentrar","Échec de reconnexion","再参加に失敗","Не удалось перезайти"},
+{"Rejoining...","Reconectando...","Reconectando...","Reconnexion...","再接続中...","Переподключение..."},
+{"No other server found","Nenhum outro servidor","No hay otro servidor","Aucun autre serveur","他のサーバーなし","Других серверов нет"},
+{"Switching server...","Trocando de servidor...","Cambiando de servidor...","Changement de serveur...","サーバー移動中...","Смена сервера..."},
+{"Trees","Árvores","Árboles","Arbres","木","Деревья"},
+{"Palms","Palmeiras","Palmeras","Palmiers","ヤシ","Пальмы"},
+{"Dead trees","Árvores mortas","Árboles muertos","Arbres morts","枯れ木","Мёртвые деревья"},
+{"Rocks & stones","Rochas e pedras","Rocas y piedras","Rochers et pierres","岩と石","Камни и скалы"},
+{"Color scheme","Esquema de cores","Esquema de color","Thème de couleurs","カラースキーム","Цветовая схема"},
+{"Accent color","Cor de destaque","Color de acento","Couleur d'accent","アクセントカラー","Акцентный цвет"},
+{"Switches, buttons and highlights.","Interruptores, botões e destaques.","Interruptores, botones y resaltados.","Interrupteurs, boutons et surbrillances.","スイッチ、ボタン、強調表示。","Переключатели, кнопки и выделения."},
+{"Click the swatch and pick any accent color.","Clique na amostra e escolha qualquer cor.","Haz clic en la muestra y elige cualquier color.","Clique sur l'échantillon et choisis une couleur.","色見本をクリックして好きな色を選択。","Нажмите на образец и выберите цвет."},
+{"Menu size","Tamanho do menu","Tamaño del menú","Taille du menu","メニューサイズ","Размер меню"},
+{"Scales the whole window.","Redimensiona a janela inteira.","Escala toda la ventana.","Redimensionne toute la fenêtre.","ウィンドウ全体を拡大縮小。","Масштабирует всё окно."},
+{"Transparency","Transparência","Transparencia","Transparence","透明度","Прозрачность"},
+{"Makes the menu see-through.","Deixa o menu transparente.","Hace el menú transparente.","Rend le menu transparent.","メニューを半透明にします。","Делает меню полупрозрачным."},
+{"Font","Fonte","Fuente","Police","フォント","Шрифт"},
+{"Font of menu and ESP texts.","Fonte do menu e dos textos ESP.","Fuente del menú y textos ESP.","Police du menu et des textes ESP.","メニューとESP文字のフォント。","Шрифт меню и текстов ESP."},
+{"Reset appearance","Resetar aparência","Restablecer apariencia","Réinit. l'apparence","外観をリセット","Сбросить оформление"},
+{"Scheme, accent, size, transparency, font.","Esquema, destaque, tamanho, transparência, fonte.","Esquema, acento, tamaño, transparencia, fuente.","Thème, accent, taille, transparence, police.","配色・アクセント・サイズ・透明度・フォント。","Схема, акцент, размер, прозрачность, шрифт."},
+{"FPS / Ping / Time","FPS / Ping / Hora","FPS / Ping / Hora","FPS / Ping / Heure","FPS / Ping / 時刻","FPS / Пинг / Время"},
+{"Shows a bar at the top left of the screen.","Mostra uma barra no canto superior esquerdo.","Muestra una barra arriba a la izquierda.","Affiche une barre en haut à gauche.","画面左上にバーを表示します。","Показывает панель в левом верхнем углу."},
+{"Auto-save","Salvar auto","Guardado auto","Sauvegarde auto","自動保存","Автосохранение"},
+{"Saves all menu settings automatically.","Salva todas as configurações automaticamente.","Guarda todos los ajustes automáticamente.","Enregistre tous les réglages automatiquement.","全設定を自動で保存します。","Автоматически сохраняет все настройки."},
+{"Save now","Salvar agora","Guardar ahora","Sauvegarder","今すぐ保存","Сохранить сейчас"},
+{"Saves the current state right away.","Salva o estado atual imediatamente.","Guarda el estado actual al instante.","Enregistre l'état actuel immédiatement.","現在の状態をすぐに保存します。","Сразу сохраняет текущее состояние."},
+{"Save","Salvar","Guardar","Enregistrer","保存","Сохранить"},
+{"Saved!","Salvo!","¡Guardado!","Enregistré !","保存しました!","Сохранено!"},
+{"Delete saved","Apagar salvos","Borrar guardado","Supprimer la sauvegarde","保存データ削除","Удалить сохранённое"},
+{"Defaults apply again on next load.","Padrões voltam no próximo carregamento.","Se usarán los valores por defecto al cargar.","Les valeurs par défaut reviennent au prochain chargement.","次回読み込み時に初期値に戻ります。","При следующей загрузке — значения по умолчанию."},
+{"Delete","Apagar","Borrar","Supprimer","削除","Удалить"},
+{"Deleted!","Apagado!","¡Borrado!","Supprimé !","削除しました!","Удалено!"},
+{"Press a key...","Pressione uma tecla...","Pulsa una tecla...","Appuie sur une touche...","キーを押して...","Нажмите клавишу..."},
+{"Always bound (press a new key to change).","Sempre atribuída (pressione outra tecla para mudar).","Siempre asignada (pulsa otra tecla para cambiar).","Toujours assignée (appuie sur une autre touche).","常に割り当て済み(別のキーで変更)。","Всегда назначена (нажмите другую клавишу)."},
+{"Press the key to toggle.","Pressione a tecla para alternar.","Pulsa la tecla para alternar.","Appuie sur la touche pour basculer.","キーを押して切り替え。","Нажмите клавишу для переключения."},
+{"Reset keybinds","Resetar atalhos","Restablecer atajos","Réinit. les raccourcis","キー設定をリセット","Сбросить клавиши"},
+{"Menu key = RCtrl, all others unbound. (Del/Backspace = clear, Esc = cancel)","Menu = RCtrl, resto livre. (Del/Backspace = limpar, Esc = cancelar)","Menú = RCtrl, el resto libre. (Supr/Retroceso = borrar, Esc = cancelar)","Menu = RCtrl, le reste libre. (Suppr/Retour = effacer, Échap = annuler)","メニュー=RCtrl、他は未割当。(Del/Backspace=解除、Esc=キャンセル)","Меню = RCtrl, остальные свободны. (Del/Backspace — очистить, Esc — отмена)"},
+{"Disable all features","Desativar tudo","Desactivar todo","Tout désactiver","全機能オフ","Выключить всё"},
+{"Turns off ESP, farming and helpers.","Desliga ESP, farm e ajudas.","Apaga ESP, farmeo y ayudas.","Désactive ESP, farm et aides.","ESP・ファーム・補助を全てオフ。","Выключает ESP, фарм и помощники."},
+{"Reset menu","Resetar menu","Restablecer menú","Réinit. le menu","メニューをリセット","Сбросить меню"},
+{"Resets language, appearance and keys.","Redefine idioma, aparência e teclas.","Restablece idioma, apariencia y teclas.","Réinitialise langue, apparence et touches.","言語・外観・キーを初期化。","Сбрасывает язык, оформление и клавиши."},
+{"Terminate","Encerrar","Terminar","Quitter","終了","Завершить"},
+{"Turns everything off and fully unloads the menu.","Desliga tudo e descarrega o menu por completo.","Apaga todo y descarga el menú por completo.","Désactive tout et décharge entièrement le menu.","全てオフにしメニューを完全に終了します。","Выключает всё и полностью выгружает меню."},
+{"Toggle menu","Alternar menu","Mostrar/ocultar menú","Afficher/masquer menu","メニュー切替","Показать/скрыть меню"},
+{"Dark","Escuro","Oscuro","Sombre","ダーク","Тёмная"},
+{"Midnight","Meia-noite","Medianoche","Minuit","ミッドナイト","Полночь"},
+{"Light","Claro","Claro","Clair","ライト","Светлая"},
+{"Forest","Floresta","Bosque","Forêt","フォレスト","Лес"},
+{"Crimson","Carmesim","Carmesí","Carmin","クリムゾン","Багровая"},
+{"Purple","Roxo","Púrpura","Violet","パープル","Фиолетовая"},
+{"Privacy","Privacidade","Privacidad","Confidentialité","プライバシー","Приватность"},
+{"Hide name","Ocultar nome","Ocultar nombre","Masquer le nom","名前を隠す","Скрыть имя"},
+{"Replaces your name in the menu with a scramble effect.","Substitui seu nome no menu por um efeito de embaralhamento.","Sustituye tu nombre en el menú por un efecto de mezcla.","Remplace ton nom dans le menu par un effet de brouillage.","メニュー内の名前をスクランブル効果に置き換えます。","Заменяет ваше имя в меню эффектом скремблирования."},
+{"Effect","Efeito","Efecto","Effet","エフェクト","Эффект"},
+{"Style of the hidden name.","Estilo do nome oculto.","Estilo del nombre oculto.","Style du nom masqué.","隠した名前のスタイル。","Стиль скрытого имени."},
+{"Scramble","Embaralhar","Mezclar","Brouiller","スクランブル","Скремблер"},
+{"Animation","Animação","Animación","Animation","アニメーション","Анимация"},
+}
+X.CODES={"pt","es","fr","ja","ru"}
+X.L={pt={},es={},fr={},ja={},ru={}}
+for _,r in ipairs(X.TR) do
+    for i,c in ipairs(X.CODES) do X.L[c][r[1]]=r[i+1] end
+end
+local function tr(p)
+    if type(p)=="function" then return p() end
+    if type(p)=="table" then
+        if lang=="de" then return p[1] end
+        local en=p[2] or p[1]
+        if lang=="en" then return en end
+        local d=X.L[lang]
+        if not d then return en end
+        local hit=d[en]
+        if hit then return hit end
+        local pre,rest=en:match("^(.-: )(.*)$")     -- z.B. "Fetching egg: Dragon"
+        if pre and d[pre] then return d[pre]..rest end
+        return en
+    end
+    return p
+end
+local function refreshLang()
+    for _,e in ipairs(reg) do pcall(function() e.o.Text=tr(e.p) end) end
+end
+
+--// Akzent-Hooks (für Objekte mit Zustand, z.B. Schalter) / Transparenz
+local accentHooks={}
+local bgObjs={}
+local function setBgTrans(t)
+    for _,o in ipairs(bgObjs) do o.BackgroundTransparency=t end
+end
+
+local function new(cls,props,parent)
+    local o=Instance.new(cls)
+    for k,v in pairs(props) do
+        if k=="Text" and type(v)~="string" then
+            reg[#reg+1]={o=o,p=v}
+            o.Text=tr(v)
+        elseif k=="Font" then
+            o.Font=(v==FONTB and X.fcur[2]) or (v==FONT and X.fcur[1]) or v
+        else
+            o[k]=v
+        end
+    end
+    if props.Font==FONT or props.Font==FONTB then
+        X.txt[o]={b=(props.Font==FONTB)}
+    end
+    -- Farb-Rollen merken (nur während des Aufbaus)
+    if not X.built then
+        for _,prop in ipairs(X.COLPROPS) do
+            local v=props[prop]
+            if typeof(v)=="Color3" then
+                for _,role in ipairs(X.ROLES) do
+                    if C[role]==v then
+                        X.rb[o]=X.rb[o] or {}
+                        X.rb[o][prop]=role
+                        break
+                    end
+                end
+            end
+        end
+    end
+    o.Parent=parent
+    return o
+end
+local function round(o,r) return new("UICorner",{CornerRadius=UDim.new(0,r)},o) end
+local function stroke(o,col,th) return new("UIStroke",{Color=col,Thickness=th or 1,ApplyStrokeMode=Enum.ApplyStrokeMode.Border},o) end
+local function pad(o,t,r,b,l) return new("UIPadding",{PaddingTop=UDim.new(0,t),PaddingRight=UDim.new(0,r),PaddingBottom=UDim.new(0,b),PaddingLeft=UDim.new(0,l)},o) end
+local function tw(o,props,t) TS:Create(o,TweenInfo.new(t or 0.14,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),props):Play() end
+
+--// Registry: alle speicherbaren Controls (Schlüssel = Abschnitt/Name)
+X.cfgItems={} X.cfgKeys={} X.curSec=""
+X.noSave={["Performance/3D-Rendering aus"]=true,["Speichern/Auto-Speichern"]=true}
+function X.reg(name,get,apply)
+    local n=type(name)=="table" and name[1] or tostring(name)
+    local key=X.curSec.."/"..n
+    if X.cfgKeys[key] then
+        local i=2
+        while X.cfgKeys[key.."#"..i] do i=i+1 end
+        key=key.."#"..i
+    end
+    X.cfgKeys[key]=true
+    if X.noSave[key] then return end
+    X.cfgItems[#X.cfgItems+1]={key=key,get=get,apply=apply}
+end
+
+local g
+do
+local pg
+local okpg=pcall(function() pg=(gethui and gethui()) or game:GetService("CoreGui") end)
+if not okpg or not pg then pg=P:WaitForChild("PlayerGui") end
+for _,n in ipairs({"EggHub","EggESP","WorldTP","Verlation","LittleHelper","GrindingTool","FuseTimerGui","AntonioHub","AntonioHubESP","AntonioHubFuse"}) do
+    local old=pg:FindFirstChild(n)
+    if old then old:Destroy() end
+end
+
+g=new("ScreenGui",{Name="AntonioHub",ResetOnSpawn=false},pg)
+end
+X.root=g
+
+--// Tastaturbelegung (Menü-Taste ist fest eingeplant, Rest frei belegbar)
+local menuBind={key=Enum.KeyCode.RightControl,req=true}
+local function keyName(k) return k and k.Name or tr({"Keine","None"}) end
+
+--// Fenster
+local WIN_W,WIN_H,SIDE_W,TOP_H=668,400,196,50
+local f=new("Frame",{Size=UDim2.new(0,WIN_W,0,WIN_H),AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.new(0.5,0,0.5,0),
+    BackgroundColor3=C.side,BorderSizePixel=0,Active=true,Draggable=true,ClipsDescendants=true,Visible=false},g)
+round(f,10)
+stroke(f,C.border,1)
+bgObjs[#bgObjs+1]=f
+local uiScale=new("UIScale",{Scale=1},f)
+
+--// Auf-/Zu-Animation (Skalieren + Einblenden)
+X.base=1 X.open=false X.anim=0
+function X.setOpen(v,done)
+    X.anim=X.anim+1
+    local id=X.anim
+    X.open=v
+    if v then
+        if not f.Visible then
+            f.Visible=true
+            uiScale.Scale=0.01
+        end
+        TS:Create(uiScale,TweenInfo.new(0.32,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{Scale=X.base}):Play()
+    else
+        TS:Create(uiScale,TweenInfo.new(0.22,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{Scale=0.01}):Play()
+        task.delay(0.24,function()
+            if X.anim~=id then return end
+            f.Visible=false
+            uiScale.Scale=X.base
+            if done then done() end
+        end)
+    end
+end
+
+--// Titelleiste (Titel + Version, darunter der Hinweis zur Menü-Taste)
+local bMin,bClose
+do
+local tb=new("Frame",{Size=UDim2.new(1,0,0,TOP_H),BackgroundTransparency=1},f)
+local icon=new("ImageLabel",{Size=UDim2.new(0,32,0,32),Position=UDim2.new(0,14,0,9),BackgroundColor3=C.card,BorderSizePixel=0,
+    Image="rbxthumb://type=GameIcon&id="..game.GameId.."&w=150&h=150"},tb)
+round(icon,8)
+new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,56,0,0),Size=UDim2.new(1,-140,1,0),RichText=true,
+    Text='Antonio Hub  <font color="rgb(122,122,140)">(Save The Egg)  v1.0</font>',TextColor3=C.txt,Font=FONTB,TextSize=18,
+    TextXAlignment=Enum.TextXAlignment.Left},tb)
+
+local function wbtn(t,x,hcol)
+    local b=new("TextButton",{Size=UDim2.new(0,30,0,26),Position=UDim2.new(1,x,0,12),BackgroundColor3=hcol,BackgroundTransparency=1,
+        Text=t,TextColor3=C.sub,Font=FONTB,TextSize=16,AutoButtonColor=false},tb)
+    round(b,6)
+    b.MouseEnter:Connect(function() tw(b,{BackgroundTransparency=0,TextColor3=C.txt}) end)
+    b.MouseLeave:Connect(function() tw(b,{BackgroundTransparency=1,TextColor3=C.sub}) end)
+    return b
+end
+bMin=wbtn("–",-72,C.hover)
+bClose=wbtn("×",-40,C.danger)
+end
+
+--// Sidebar: Benutzer-Karte (Avatar, Name, Uhrzeit, FPS) + Navigation
+local USER_H=52
+local side=new("Frame",{Position=UDim2.new(0,8,1,-(USER_H+8)),Size=UDim2.new(0,SIDE_W-16,0,USER_H),BackgroundColor3=C.card,BorderSizePixel=0},f)
+round(side,8)
+stroke(side,C.border,1)
+bgObjs[#bgObjs+1]=side
+
+new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,14,1,-(USER_H+28)),Size=UDim2.new(0,SIDE_W-24,0,16),
+    Text=function() return keyName(menuBind.key)..tr({": Menü ein/aus",": toggle menu"}) end,
+    TextColor3=C.sub,Font=FONT,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left},f)
+
+local nav=new("Frame",{Size=UDim2.new(0,SIDE_W-16,1,-(TOP_H+USER_H+40)),Position=UDim2.new(0,8,0,TOP_H+8),BackgroundTransparency=1},f)
+new("UIListLayout",{Padding=UDim.new(0,2),SortOrder=Enum.SortOrder.LayoutOrder},nav)
+
+--// Benutzer-Karte: Namen-Scrambling (Text Scrambling / Matrix / Animation)
+X.U={hide=false,mode=1,cur={},frames=0}
+X.SCR={
+    {"日","本","中","文","字","龍","界","人"},                                                      -- 1: Scramble
+    {"ア","イ","ウ","エ","オ","カ","キ","ク","ケ","コ","0","1","2","3","4","5","6","7","8","9"},   -- 2: Matrix
+    {"日","本","中","文","字","龍","界","人","ア","カ","0","1","X","Z","#","$","%"},                -- 3: Animation
+}
+function X.scramble(text,set)
+    local n=utf8.len(text) or #text
+    local out={}
+    for i=1,n do out[i]=set[math.random(#set)] end
+    return table.concat(out)
+end
+function X.U.step(name)
+    if X.U.mode==3 then
+        -- Animation: jedes Zeichen wechselt in eigenem Rhythmus
+        local set=X.SCR[3]
+        local n=utf8.len(name) or #name
+        for i=1,n do
+            if not X.U.cur[i] or math.random()<0.3 then X.U.cur[i]=set[math.random(#set)] end
+        end
+        for i=#X.U.cur,n+1,-1 do X.U.cur[i]=nil end
+        return table.concat(X.U.cur)
+    end
+    return X.scramble(name,X.SCR[X.U.mode] or X.SCR[1])
+end
+
+do
+local av=new("ImageLabel",{Position=UDim2.new(0,8,0,8),Size=UDim2.new(0,36,0,36),BackgroundColor3=C.btn,BorderSizePixel=0,
+    Image="rbxthumb://type=AvatarHeadShot&id="..P.UserId.."&w=150&h=150"},side)
+round(av,18)
+X.U.name=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,52,0,7),Size=UDim2.new(1,-58,0,18),Text=P.DisplayName,
+    TextColor3=C.txt,Font=FONTB,TextSize=13,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},side)
+X.U.info=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,52,0,26),Size=UDim2.new(1,-56,0,16),Text="--:--:--  |  -- FPS",
+    TextColor3=C.sub,Font=FONT,TextSize=10,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},side)
+
+bind(RS.RenderStepped,function() X.U.frames=X.U.frames+1 end)
+task.spawn(function()
+    local last=tick()
+    while g.Parent do
+        local nm=P.DisplayName
+        if X.U.hide then
+            X.U.name.Text=X.U.step(nm)
+            local m=X.U.mode
+            X.U.name.TextColor3=(m==2 and Color3.fromRGB(0,255,80)) or (m==3 and C.accent) or C.txt
+        else
+            if X.U.name.Text~=nm then X.U.name.Text=nm end
+            X.U.name.TextColor3=C.txt
+        end
+        local now=tick()
+        if now-last>=0.5 then
+            local fps=X.U.frames/(now-last)
+            X.U.frames=0
+            last=now
+            X.U.info.Text=string.format("%s  |  %d FPS",os.date("%H:%M:%S"),math.floor(fps+0.5))
+        end
+        task.wait(0.08)
+    end
+end)
+end
+
+--// Inhaltsfläche
+local panel=new("Frame",{Position=UDim2.new(0,SIDE_W,0,TOP_H),Size=UDim2.new(1,-SIDE_W-8,1,-TOP_H-8),BackgroundColor3=C.bg,BorderSizePixel=0,ClipsDescendants=true},f)
+round(panel,8)
+stroke(panel,C.border,1)
+bgObjs[#bgObjs+1]=panel
+
+local pages,tabs={}, {}
+local current
+local function selectTab(key)
+    local changed=(current~=key)
+    current=key
+    for n,p in pairs(pages) do
+        local on=(n==key)
+        p.Visible=on
+        if on and changed then
+            p.Position=UDim2.new(0,0,0,14)
+            tw(p,{Position=UDim2.new(0,0,0,0)},0.28)
+        end
+    end
+    for n,t in pairs(tabs) do
+        local on=(n==key)
+        tw(t.btn,{BackgroundTransparency=on and 0 or 1})
+        tw(t.bar,{BackgroundTransparency=on and 0 or 1,Size=on and UDim2.new(0,3,0,20) or UDim2.new(0,3,0,14)})
+        tw(t.lb,{TextColor3=on and C.txt or C.sub})
+    end
+end
+
+local function newPage(key,label,order)
+    local b=new("TextButton",{Size=UDim2.new(1,0,0,32),BackgroundColor3=C.hover,BackgroundTransparency=1,Text="",AutoButtonColor=false,LayoutOrder=order},nav)
+    round(b,6)
+    local bar=new("Frame",{Size=UDim2.new(0,3,0,14),Position=UDim2.new(0,0,0.5,-7),BackgroundColor3=C.accent,BackgroundTransparency=1,BorderSizePixel=0},b)
+    round(bar,2)
+    accentHooks[#accentHooks+1]=function() bar.BackgroundColor3=C.accent end
+    local lb=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,14,0,0),Size=UDim2.new(1,-14,1,0),Text=label,TextColor3=C.sub,
+        Font=FONT,TextSize=12,TextXAlignment=Enum.TextXAlignment.Left},b)
+    tabs[key]={btn=b,bar=bar,lb=lb}
+    b.MouseEnter:Connect(function()
+        if current~=key then tw(b,{BackgroundTransparency=0.6}) tw(lb,{TextColor3=C.txt}) end
+    end)
+    b.MouseLeave:Connect(function()
+        if current~=key then tw(b,{BackgroundTransparency=1}) tw(lb,{TextColor3=C.sub}) end
+    end)
+    b.MouseButton1Click:Connect(function() selectTab(key) end)
+
+    local sf=new("ScrollingFrame",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,BorderSizePixel=0,Visible=false,
+        ScrollBarThickness=3,ScrollBarImageColor3=C.off,CanvasSize=UDim2.new(0,0,0,0),AutomaticCanvasSize=Enum.AutomaticSize.Y},panel)
+    new("UIListLayout",{Padding=UDim.new(0,10),SortOrder=Enum.SortOrder.LayoutOrder},sf)
+    pad(sf,12,12,12,12)
+    pages[key]=sf
+    return sf
+end
+
+local pESP=newPage("esp",{"ESP","ESP"},1)
+local pEgg=newPage("egg",{"Egg ESP Einstellungen","Egg ESP Settings"},2)
+local pPly=newPage("ply",{"Spieler ESP Einstellungen","Player ESP Settings"},3)
+local pFarm=newPage("farm",{"Farm","Farm"},4)
+local pMisc=newPage("misc",{"Misc","Misc"},5)
+local pCfg=newPage("cfg",{"Einstellungen","Settings"},6)
+
+--// Bausteine
+local function mkSwitch(parent,xoff)
+    local pill=new("Frame",{AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,xoff or -8,0.5,0),Size=UDim2.new(0,32,0,16),BackgroundColor3=C.off,BorderSizePixel=0},parent)
+    round(pill,8)
+    local knob=new("Frame",{Size=UDim2.new(0,12,0,12),Position=UDim2.new(0,2,0,2),BackgroundColor3=rgb(244,244,250),BorderSizePixel=0},pill)
+    round(knob,6)
+    local state=false
+    accentHooks[#accentHooks+1]=function() pill.BackgroundColor3=state and C.accent or C.off end
+    return function(v)
+        state=v
+        tw(pill,{BackgroundColor3=v and C.accent or C.off})
+        tw(knob,{Position=v and UDim2.new(1,-14,0,2) or UDim2.new(0,2,0,2)})
+    end
+end
+
+local function hoverBg(b)
+    b.MouseEnter:Connect(function() tw(b,{BackgroundTransparency=0}) end)
+    b.MouseLeave:Connect(function() tw(b,{BackgroundTransparency=1}) end)
+end
+
+local function section(parent,title,onAll)
+    X.curSec=type(title)=="table" and title[1] or tostring(title)
+    local c=new("Frame",{Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundColor3=C.card,BorderSizePixel=0},parent)
+    round(c,8) stroke(c,C.border,1) pad(c,6,6,8,6)
+    bgObjs[#bgObjs+1]=c
+    new("UIListLayout",{Padding=UDim.new(0,2),SortOrder=Enum.SortOrder.LayoutOrder},c)
+    local props={Size=UDim2.new(1,0,0,24),BackgroundTransparency=1,LayoutOrder=-1}
+    if onAll then props.Text="" props.AutoButtonColor=false end
+    local hd=new(onAll and "TextButton" or "Frame",props,c)
+    new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,6,0,0),Size=UDim2.new(1,-90,1,0),
+        Text=function() return string.upper(tr(title)) end,TextColor3=C.sub,
+        Font=FONTB,TextSize=10,TextXAlignment=Enum.TextXAlignment.Left},hd)
+    local setAll
+    if onAll then
+        new("TextLabel",{BackgroundTransparency=1,AnchorPoint=Vector2.new(1,0),Position=UDim2.new(1,-46,0,0),Size=UDim2.new(0,40,1,0),Text={"Alle","All"},
+            TextColor3=C.sub,Font=FONT,TextSize=11,TextXAlignment=Enum.TextXAlignment.Right},hd)
+        local sw=mkSwitch(hd,-6)
+        local on=false
+        hd.MouseButton1Click:Connect(function()
+            on=not on sw(on)
+            local okc,e=pcall(onAll,on)
+            if not okc then warn(e) end
+        end)
+        setAll=function(v) on=v sw(v) end
+    end
+    return c,setAll
+end
+
+local function grid(parent,cols,h)
+    local c=new("Frame",{Size=UDim2.new(1,0,0,0),BackgroundTransparency=1,AutomaticSize=Enum.AutomaticSize.Y},parent)
+    new("UIGridLayout",{CellSize=UDim2.new(1/cols,-math.ceil(4*(cols-1)/cols),0,h),CellPadding=UDim2.new(0,4,0,2),SortOrder=Enum.SortOrder.LayoutOrder},c)
+    return c
+end
+
+-- kompakter Schalter (Grid) oder Zeile mit Beschreibung (Liste)
+local function toggle(parent,name,desc,col,cb)
+    local b=new("TextButton",{BackgroundColor3=C.hover,BackgroundTransparency=1,Text="",AutoButtonColor=false,
+        Size=desc and UDim2.new(1,0,0,44) or UDim2.new(1,0,1,0)},parent)
+    round(b,6) hoverBg(b)
+    local x=10
+    if col then
+        local dot=new("Frame",{Size=UDim2.new(0,6,0,6),AnchorPoint=Vector2.new(0,0.5),Position=UDim2.new(0,10,0.5,0),BackgroundColor3=col,BorderSizePixel=0},b)
+        round(dot,3)
+        X.rb[dot]=nil      -- Farbpunkte gehören nicht zum Theme
+        x=24
+    end
+    new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,x,0,desc and 7 or 0),Size=UDim2.new(1,-x-50,0,desc and 16 or 28),
+        Text=name,TextColor3=C.txt,Font=FONT,TextSize=desc and 13 or 12,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},b)
+    if desc then
+        new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,x,0,24),Size=UDim2.new(1,-x-50,0,14),Text=desc,TextColor3=C.sub,
+            Font=FONT,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},b)
+    end
+    local sw=mkSwitch(b,-8)
+    local on=false
+    local function set(v) on=v sw(v) end
+    b.MouseButton1Click:Connect(function()
+        set(not on)
+        local okc,e=pcall(cb,on)
+        if not okc then warn(e) end
+    end)
+    X.reg(name,function() return on end,function(v) set(v) pcall(cb,v) end)
+    return set
+end
+
+-- Button-Zeile (rechts ein Button). cb(setDesc, resetDesc)
+local function buttonRow(parent,name,desc,label,danger,cb)
+    local b=new("Frame",{BackgroundTransparency=1,Size=UDim2.new(1,0,0,44)},parent)
+    new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,10,0,7),Size=UDim2.new(1,-120,0,16),Text=name,TextColor3=C.txt,
+        Font=FONT,TextSize=13,TextXAlignment=Enum.TextXAlignment.Left},b)
+    local d=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,10,0,24),Size=UDim2.new(1,-120,0,14),Text=desc,TextColor3=C.sub,
+        Font=FONT,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},b)
+    local function getcol() return danger and C.danger or C.accent end
+    local btn=new("TextButton",{AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-8,0.5,0),Size=UDim2.new(0,96,0,26),BackgroundColor3=C.btn,
+        Text=label,TextColor3=getcol(),Font=FONT,TextSize=12,AutoButtonColor=false},b)
+    round(btn,6)
+    local bs=stroke(btn,C.border,1)
+    accentHooks[#accentHooks+1]=function() btn.TextColor3=getcol() end
+    btn.MouseEnter:Connect(function() tw(bs,{Color=getcol()}) tw(btn,{BackgroundColor3=C.off}) end)
+    btn.MouseLeave:Connect(function() tw(bs,{Color=C.border}) tw(btn,{BackgroundColor3=C.btn}) end)
+    btn.MouseButton1Click:Connect(function()
+        tw(btn,{Size=UDim2.new(0,88,0,23)},0.07)
+        task.delay(0.08,function() tw(btn,{Size=UDim2.new(0,96,0,26)},0.18) end)
+        local okc,e=pcall(cb,function(t) d.Text=tr(t) end,function() d.Text=tr(desc) end)
+        if not okc then warn(e) end
+    end)
+end
+
+-- Segment-Auswahl (gibt Setter zurück)
+local function segmented(parent,name,desc,options,idx,cb,bw)
+    bw=bw or 36
+    local w=#options*(bw+2)+4
+    local b=new("Frame",{BackgroundTransparency=1,Size=UDim2.new(1,0,0,44)},parent)
+    new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,10,0,7),Size=UDim2.new(1,-w-26,0,16),Text=name,TextColor3=C.txt,
+        Font=FONT,TextSize=13,TextXAlignment=Enum.TextXAlignment.Left},b)
+    new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,10,0,24),Size=UDim2.new(1,-w-26,0,14),Text=desc,TextColor3=C.sub,
+        Font=FONT,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},b)
+    local box=new("Frame",{AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-8,0.5,0),Size=UDim2.new(0,w,0,26),BackgroundColor3=C.btn,BorderSizePixel=0},b)
+    round(box,6) stroke(box,C.border,1) pad(box,2,2,2,2)
+    new("UIListLayout",{FillDirection=Enum.FillDirection.Horizontal,SortOrder=Enum.SortOrder.LayoutOrder,Padding=UDim.new(0,2)},box)
+    local btns={}
+    local sel=idx
+    local function paint()
+        for i,bt in ipairs(btns) do
+            tw(bt,{BackgroundTransparency=(i==sel) and 0 or 1,TextColor3=(i==sel) and Color3.new(1,1,1) or C.sub})
+        end
+    end
+    for i,o in ipairs(options) do
+        local bt=new("TextButton",{Size=UDim2.new(0,bw,1,0),BackgroundColor3=C.accent,BackgroundTransparency=1,Text=o,TextColor3=C.sub,
+            Font=FONT,TextSize=11,AutoButtonColor=false,LayoutOrder=i},box)
+        round(bt,4)
+        btns[i]=bt
+        bt.MouseEnter:Connect(function() if sel~=i then tw(bt,{TextColor3=C.txt}) end end)
+        bt.MouseLeave:Connect(function() if sel~=i then tw(bt,{TextColor3=C.sub}) end end)
+        bt.MouseButton1Click:Connect(function()
+            sel=i paint()
+            local okc,e=pcall(cb,i)
+            if not okc then warn(e) end
+        end)
+    end
+    accentHooks[#accentHooks+1]=function()
+        for _,bt in ipairs(btns) do bt.BackgroundColor3=C.accent end
+        paint()
+    end
+    paint()
+    X.reg(name,function() return sel end,function(i) sel=i paint() pcall(cb,i) end)
+    return function(i) sel=i paint() end
+end
+
+-- Farbwähler: Farbfeld (Sättigung/Helligkeit) + Farbton-Leiste. Gibt Setter zurück (nur Optik).
+-- noreg = true: wird nicht automatisch gespeichert
+local function colorRow(parent,name,desc,initial,cb,noreg)
+    local h,s,v=Color3.toHSV(initial)
+    local wrap=new("Frame",{BackgroundTransparency=1,Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y},parent)
+    new("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},wrap)
+    local head=new("Frame",{BackgroundTransparency=1,Size=UDim2.new(1,0,0,44),LayoutOrder=1},wrap)
+    new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,10,0,7),Size=UDim2.new(1,-90,0,16),Text=name,TextColor3=C.txt,
+        Font=FONT,TextSize=13,TextXAlignment=Enum.TextXAlignment.Left},head)
+    new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,10,0,24),Size=UDim2.new(1,-90,0,14),Text=desc,TextColor3=C.sub,
+        Font=FONT,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},head)
+    local sw=new("TextButton",{AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-8,0.5,0),Size=UDim2.new(0,56,0,26),
+        BackgroundColor3=initial,Text="",AutoButtonColor=false},head)
+    X.rb[sw]=nil
+    round(sw,6) stroke(sw,C.border,1)
+
+    local pick=new("Frame",{BackgroundTransparency=1,Size=UDim2.new(1,0,0,126),Visible=false,LayoutOrder=2},wrap)
+    local sv=new("TextButton",{Position=UDim2.new(0,10,0,4),Size=UDim2.new(1,-54,0,112),BackgroundColor3=Color3.fromHSV(h,1,1),
+        Text="",AutoButtonColor=false,BorderSizePixel=0},pick)
+    X.rb[sv]=nil
+    round(sv,6)
+    local wh=new("Frame",{Size=UDim2.new(1,0,1,0),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0,Active=false},sv)
+    round(wh,6)
+    new("UIGradient",{Transparency=NumberSequence.new(0,1)},wh)
+    local bk=new("Frame",{Size=UDim2.new(1,0,1,0),BackgroundColor3=Color3.new(0,0,0),BorderSizePixel=0,Active=false},sv)
+    round(bk,6)
+    new("UIGradient",{Rotation=90,Transparency=NumberSequence.new(1,0)},bk)
+    local svDot=new("Frame",{AnchorPoint=Vector2.new(0.5,0.5),Size=UDim2.new(0,10,0,10),BackgroundColor3=Color3.new(1,1,1),
+        BorderSizePixel=0,ZIndex=3,Active=false},sv)
+    round(svDot,5) stroke(svDot,Color3.new(0,0,0),1)
+
+    local hue=new("TextButton",{Position=UDim2.new(1,-34,0,4),Size=UDim2.new(0,24,0,112),BackgroundColor3=Color3.new(1,1,1),
+        Text="",AutoButtonColor=false,BorderSizePixel=0},pick)
+    round(hue,6)
+    new("UIGradient",{Rotation=90,Color=ColorSequence.new({
+        ColorSequenceKeypoint.new(0,rgb(255,0,0)),
+        ColorSequenceKeypoint.new(1/6,rgb(255,255,0)),
+        ColorSequenceKeypoint.new(2/6,rgb(0,255,0)),
+        ColorSequenceKeypoint.new(3/6,rgb(0,255,255)),
+        ColorSequenceKeypoint.new(4/6,rgb(0,0,255)),
+        ColorSequenceKeypoint.new(5/6,rgb(255,0,255)),
+        ColorSequenceKeypoint.new(1,rgb(255,0,0)),
+    })},hue)
+    local hueDot=new("Frame",{AnchorPoint=Vector2.new(0.5,0.5),Size=UDim2.new(1,6,0,5),BackgroundColor3=Color3.new(1,1,1),
+        BorderSizePixel=0,ZIndex=3,Active=false},hue)
+    round(hueDot,2) stroke(hueDot,Color3.new(0,0,0),1)
+
+    local function apply(fire)
+        local col=Color3.fromHSV(h,s,v)
+        sw.BackgroundColor3=col
+        sv.BackgroundColor3=Color3.fromHSV(h,1,1)
+        svDot.Position=UDim2.new(s,0,1-v,0)
+        hueDot.Position=UDim2.new(0.5,0,h,0)
+        if fire then
+            local okc,e=pcall(cb,col)
+            if not okc then warn(e) end
+        end
+    end
+    apply(false)
+
+    local mode
+    local function upd()
+        local m=UIS:GetMouseLocation()-GS:GetGuiInset()
+        if mode=="sv" then
+            s=math.clamp((m.X-sv.AbsolutePosition.X)/math.max(sv.AbsoluteSize.X,1),0,1)
+            v=1-math.clamp((m.Y-sv.AbsolutePosition.Y)/math.max(sv.AbsoluteSize.Y,1),0,1)
+        elseif mode=="hue" then
+            h=math.clamp((m.Y-hue.AbsolutePosition.Y)/math.max(hue.AbsoluteSize.Y,1),0,0.999)
+        else return end
+        apply(true)
+    end
+    sv.MouseButton1Down:Connect(function() mode="sv" upd() end)
+    hue.MouseButton1Down:Connect(function() mode="hue" upd() end)
+    bind(UIS.InputChanged,function(i)
+        if mode and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then upd() end
+    end)
+    bind(UIS.InputEnded,function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then mode=nil end
+    end)
+    sw.MouseButton1Click:Connect(function() pick.Visible=not pick.Visible end)
+
+    if not noreg then
+        X.reg(name,function() return {h,s,v} end,function(t)
+            if type(t)=="table" and #t==3 then h,s,v=t[1],t[2],t[3] apply(true) end
+        end)
+    end
+    return function(col)
+        h,s,v=Color3.toHSV(col)
+        apply(false)
+    end
+end
+
+--=====================================================================
+--// ESP-SYSTEM (Eier)
+--=====================================================================
+local active,marks={},{}
+local function make(o,i,it)
+    local col=COL[i]
+    local hl=new("Highlight",{Adornee=o,FillColor=col,OutlineColor=col,FillTransparency=1,OutlineTransparency=0,
+        DepthMode=Enum.HighlightDepthMode.AlwaysOnTop},g)
+    local part=o:IsA("BasePart") and o or o:FindFirstChildWhichIsA("BasePart",true)
+    local bb=new("BillboardGui",{Adornee=part,AlwaysOnTop=true,Size=UDim2.new(0,260,0,90),StudsOffset=Vector3.new(0,6,0),MaxDistance=math.huge},g)
+    local lb=new("TextLabel",{Size=UDim2.new(1,0,0,70),Position=UDim2.new(0,0,0,0),BackgroundTransparency=1,TextColor3=col,
+        TextStrokeTransparency=0,TextSize=S.textSize,TextWrapped=true,Font=FONTB},bb)
+    local ln
+    if Drawing then ln=Drawing.new("Line") ln.Color=col ln.Thickness=S.tracerThick ln.Visible=false end
+    local e=E[i]
+    local mutSuffix = ""
+    if it.s == 2 and not has(it.n:lower(), "rainbow") then mutSuffix = " (Rainbow)"
+    elseif it.s == 3 and not has(it.n:lower(), "retro") then mutSuffix = " (Retro)"
+    elseif it.s == 1 and not has(it.n:lower(), "gold") then mutSuffix = " (Gold)" end
+    local nm=(e[3] and it.n~="" and has(it.n:lower(),unpack(e[2])) and it.n) or e[1]
+    marks[o]={hl=hl,bb=bb,lb=lb,ln=ln,col=col,part=part,rb=e[4],kt=it.kt,
+        sz=it.sz, t=nm..mutSuffix, vis=true}
+end
+
+local function matchE(e,it)
+    if e[6] and has(it.kt,unpack(e[6])) then return false end
+    return has(it.kt,unpack(e[2])) and (e[5] and eggStrict(it) or (not e[5] and (not e[3] or it.txt or isEggT(it.kt) or eggCtx(it.tgt))))
+end
+
+local function scan()
+    local r=P.Character and P.Character:FindFirstChild("HumanoidRootPart")
+    local items=buildItems(r and r.Position or Vector3.new(0,0,0))
+    local want,seen={}, {}
+    for i,e in ipairs(E) do
+        if active[i] then
+            for _,it in ipairs(items) do
+                if not seen[it.tgt] and matchE(e,it) then
+                    if not (it.ign and not SHOW_BASES) then
+                        seen[it.tgt]=true
+                        local okS, sz = pcall(function() local t = it.tgt return t:IsA("Model") and t:GetExtentsSize() or t.Size end)
+                        it.sz = (okS and sz) and math.max(sz.X, sz.Y, sz.Z) or 0
+                        want[#want+1]={i=i,it=it}
+                    end
+                end
+            end
+        end
+    end
+    table.sort(want,function(a,b)
+        local ma,mb=marks[a.it.tgt]~=nil,marks[b.it.tgt]~=nil
+        if ma~=mb then return ma end
+        return a.it.d<b.it.d
+    end)
+    local alive,acc,n={}, {}, 0
+    for _,w in ipairs(want) do
+        if n>=S.maxMarks then break end
+        local dup=false
+        for _,q in ipairs(acc) do
+            if q.i==w.i and (q.p-w.it.pos).Magnitude<10 then dup=true break end
+        end
+        if not dup then
+            acc[#acc+1]={i=w.i,p=w.it.pos}
+            alive[w.it.tgt]=true n=n+1
+            if not marks[w.it.tgt] then make(w.it.tgt,w.i,w.it) end
+            local m=marks[w.it.tgt]
+            m.sz = w.it.sz
+            local names,got,rbw={}, {}, false
+            for _,ej in ipairs(E) do
+                if matchE(ej,w.it) then
+                    local sn=ej[1]:gsub(" %(alle%)","")
+                    names[#names+1]=sn got[sn]=true
+                    if ej[4] then rbw=true end
+                end
+            end
+            if w.it.s==2 and not got["Rainbow"] then names[#names+1]="Rainbow" rbw=true end
+            if w.it.s==3 and not got["Retro"] then names[#names+1]="Retro" rbw=true end
+            if w.it.s==1 and not got["Gold"] then names[#names+1]="Gold" end
+            if #names>0 then
+                -- Nur Mutationen erkannt -> Ei-Namen dazuschreiben (z.B. "Gold | Dragon Egg")
+                local onlyMut=true
+                for _,nme in ipairs(names) do
+                    if not X.mut[nme] then onlyMut=false break end
+                end
+                local label=table.concat(names," + ")
+                if onlyMut then
+                    local base=X.base(w.it)
+                    if base then label=label.." | "..base end
+                end
+                m.t=label
+            end
+            m.rb=rbw
+        end
+    end
+
+    for o,m in pairs(marks) do
+        if not alive[o] or not o.Parent then
+            m.hl:Destroy() m.bb:Destroy() if m.ln then pcall(function() m.ln:Remove() end) end marks[o]=nil
+        end
+    end
+end
+
+--=====================================================================
+--// SPIELER ESP
+--=====================================================================
+local playerMarks = {}
+
+X.BONES15 = {
+    {"Head","UpperTorso"},{"UpperTorso","LowerTorso"},
+    {"UpperTorso","LeftUpperArm"},{"LeftUpperArm","LeftLowerArm"},{"LeftLowerArm","LeftHand"},
+    {"UpperTorso","RightUpperArm"},{"RightUpperArm","RightLowerArm"},{"RightLowerArm","RightHand"},
+    {"LowerTorso","LeftUpperLeg"},{"LeftUpperLeg","LeftLowerLeg"},{"LeftLowerLeg","LeftFoot"},
+    {"LowerTorso","RightUpperLeg"},{"RightUpperLeg","RightLowerLeg"},{"RightLowerLeg","RightFoot"},
+}
+X.BONES6 = {
+    {"Head","Torso"},{"Torso","Left Arm"},{"Torso","Right Arm"},{"Torso","Left Leg"},{"Torso","Right Leg"},
+}
+
+local function killPM(plr)
+    local m = playerMarks[plr]
+    if not m then return end
+    pcall(function() m.bb:Destroy() end)
+    if m.hl then pcall(function() m.hl:Destroy() end) end
+    for _, k in ipairs({"ln","box","headC"}) do
+        if m[k] then pcall(function() m[k]:Remove() end) end
+    end
+    for _, k in ipairs({"bones","box3","corner"}) do
+        if m[k] then for _, l in ipairs(m[k]) do pcall(function() l:Remove() end) end end
+    end
+    playerMarks[plr] = nil
+end
+bind(Players.PlayerRemoving, killPM)
+
+function X.fmtNum(v)
+    if type(v)~="number" then return tostring(v) end
+    local a=math.abs(v)
+    if a>=1e9 then return string.format("%.1fB",v/1e9)
+    elseif a>=1e6 then return string.format("%.1fM",v/1e6)
+    elseif a>=1e3 then return string.format("%.1fK",v/1e3) end
+    return tostring(math.floor(v*100+0.5)/100)
+end
+
+function X.leaderLines(plr)
+    local out = {}
+    local ls = plr:FindFirstChild("leaderstats")
+    if ls then
+        for _, v in ipairs(ls:GetChildren()) do
+            if v:IsA("ValueBase") then out[#out+1] = v.Name .. ": " .. X.fmtNum(v.Value) end
+        end
+    end
+    return out
+end
+
+local function updatePlayerEsp()
+    for plr in pairs(playerMarks) do
+        if not plr.Parent then killPM(plr) end
+    end
+    local r = P.Character and P.Character:FindFirstChild("HumanoidRootPart")
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= P then
+            local char = plr.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            local dist = (r and hrp) and (hrp.Position - r.Position).Magnitude or 0
+            local ok = playerEspOn and hrp and hum and hum.Health > 0 and dist <= PS.maxDist
+            if ok then
+                local m = playerMarks[plr]
+                if m and m.hrp ~= hrp then killPM(plr) m = nil end
+                if not m then
+                    local hl = new("Highlight", {Adornee = char, FillTransparency = 1, OutlineTransparency = 0,
+                        DepthMode = Enum.HighlightDepthMode.AlwaysOnTop}, g)
+                    local bb = new("BillboardGui", {Adornee = hrp, AlwaysOnTop = true, Size = UDim2.new(0, 220, 0, 110),
+                        StudsOffset = Vector3.new(0, 4.5, 0), MaxDistance = math.huge}, g)
+                    local lb = new("TextLabel", {Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1,
+                        TextStrokeTransparency = 0, TextSize = 14, Font = FONTB, TextYAlignment = Enum.TextYAlignment.Bottom}, bb)
+                    local ln, box
+                    if Drawing then
+                        ln = Drawing.new("Line") ln.Thickness = 1.5 ln.Visible = false
+                        box = Drawing.new("Square") box.Thickness = 1.5 box.Filled = false box.Visible = false
+                    end
+                    m = {bb = bb, lb = lb, hl = hl, ln = ln, box = box, hrp = hrp, char = char}
+                    playerMarks[plr] = m
+                end
+                local col = PS.col
+                local lines = {}
+                local nm = PS.nameMode
+                if nm == 2 then
+                    lines[#lines+1] = plr.Name
+                elseif nm == 3 then
+                    lines[#lines+1] = plr.DisplayName
+                elseif nm == 4 then
+                    lines[#lines+1] = (plr.DisplayName == plr.Name) and plr.Name or (plr.DisplayName .. " (@" .. plr.Name .. ")")
+                end
+                if PS.item then
+                    -- nur anzeigen, wenn wirklich ein Item in der Hand ist
+                    local tool = char:FindFirstChildOfClass("Tool")
+                    if tool then lines[#lines+1] = "Item: " .. tool.Name end
+                end
+                if PS.leader then
+                    for _, l in ipairs(X.leaderLines(plr)) do lines[#lines+1] = l end
+                end
+                if PS.dist then lines[#lines+1] = "[" .. math.floor(dist) .. "m]" end
+                m.lb.Text = table.concat(lines, "\n")
+                m.lb.TextColor3 = col
+                m.hl.OutlineColor = col
+                m.hl.Enabled = PS.hl
+                m.bb.Enabled = true
+            else
+                killPM(plr)
+            end
+        end
+    end
+end
+
+--=====================================================================
+--// AUTO QUICK-EVENT
+--=====================================================================
+local quickOn=false
+do
+local qc,clicked,firstSeen,lastClick={}, {}, {}, {}
+local pgui=P:WaitForChild("PlayerGui")
+
+local function evalQ(o)
+    if o:IsA("TextLabel") or o:IsA("TextButton") then
+        local t=o.Text:gsub("<[^>]+>",""):lower():gsub("\195\151","x")
+        if #t<=6 and (t:match("^%s*x%s*3%s*$") or t:match("^%s*3%s*x%s*$")) then qc[o]=true else qc[o]=nil end
+    end
+end
+bind(pgui.DescendantAdded, evalQ)
+task.spawn(function()
+    local d=pgui:GetDescendants()
+    for i=1,#d do evalQ(d[i]) if i%300==0 then RS.Heartbeat:Wait() end end
+end)
+
+local function visible(o)
+    local a=o
+    while a and a:IsA("GuiObject") do if not a.Visible then return false end a=a.Parent end
+    local sg=o:FindFirstAncestorOfClass("ScreenGui")
+    return o.AbsoluteSize.X>5 and (not sg or sg.Enabled)
+end
+
+local function clickTarget(o)
+    local a=o
+    for _=1,4 do if a and a:IsA("GuiButton") then return a end a=a and a.Parent end
+    return o.Parent and o.Parent:IsA("GuiObject") and o.Parent or o
+end
+
+local function press(b,coords)
+    local usedSignal=false
+    if b:IsA("GuiButton") then
+        if firesignal then
+            for _,s in ipairs({b.MouseButton1Down,b.MouseButton1Up,b.MouseButton1Click,b.Activated}) do pcall(firesignal,s) end
+            usedSignal=true
+        elseif getconnections then
+            for _,s in ipairs({b.MouseButton1Click,b.Activated}) do
+                for _,c in ipairs(getconnections(s)) do pcall(function() c:Fire() end) end
+            end
+            usedSignal=true
+        end
+    end
+    if coords or not usedSignal then
+        local sg=b:FindFirstAncestorOfClass("ScreenGui")
+        local inset=(sg and sg.IgnoreGuiInset) and Vector2.new(0,0) or GS:GetGuiInset()
+        local c=b.AbsolutePosition+b.AbsoluteSize/2+inset
+        pcall(function()
+            VIM:SendMouseButtonEvent(c.X,c.Y,0,true,game,0)
+            task.wait(0.03)
+            VIM:SendMouseButtonEvent(c.X,c.Y,0,false,game,0)
+        end)
+    end
+end
+
+task.spawn(function()
+    while g.Parent do
+        if quickOn then
+            local now=tick()
+            for o in pairs(qc) do
+                if not o.Parent then qc[o]=nil clicked[o]=nil firstSeen[o]=nil lastClick[o]=nil
+                elseif visible(o) then
+                    firstSeen[o]=firstSeen[o] or now
+                    local n=clicked[o] or 0
+                    local due=(n==0 and now-firstSeen[o]>=QUICK_DELAY) or (n>0 and now-(lastClick[o] or 0)>=QUICK_RETRY)
+                    if n<QUICK_TRIES and due then
+                        clicked[o]=n+1 lastClick[o]=now
+                        pcall(press,clickTarget(o),n>=1)
+                    end
+                else clicked[o]=nil firstSeen[o]=nil lastClick[o]=nil end
+            end
+        end
+        task.wait(0.1)
+    end
+end)
+end
+
+--=====================================================================
+--// AUTO DIAMOND (ohne Noclip)
+--=====================================================================
+task.spawn(function()
+    local cands = {}
+    while g.Parent do
+        if not diamondOn then
+            diamondWake.Event:Wait()
+            if not g.Parent then break end
+        end
+
+        RS.Heartbeat:Wait()
+        if not (g.Parent and diamondOn) then continue end
+
+        local char = P.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if not (hrp and hum and hum.Health > 0) then continue end
+
+        local best
+        local now = tick()
+        local hpos = hrp.Position
+        table.clear(cands)
+        local anyInteractive = false
+
+        for o, e in pairs(diamonds) do
+            if not o.Parent then
+                updateDiamondHighlight(e, false)
+                diamonds[o] = nil
+            elseif now >= e.skipUntil then
+                local part = getDiamondPart(o, e)
+                if part and isVisible(o, e, now) and not isBad(o, e, now) then
+                    local inter = isInteractive(o)
+                    if inter then anyInteractive = true end
+                    cands[#cands + 1] = {o = o, e = e, part = part, inter = inter}
+                end
+            end
+        end
+
+        local bestD
+        for i = 1, #cands do
+            local c = cands[i]
+            if not anyInteractive or c.inter then
+                local v = c.part.Position - hpos
+                local d = v.X * v.X + v.Y * v.Y + v.Z * v.Z
+                if not bestD or d < bestD then best, bestD = c, d end
+            end
+        end
+
+        if best then
+            local e = best.e
+            e.tries += 1
+            e.skipUntil = tick() + RETRY_SKIP[math.min(e.tries, #RETRY_SKIP)]
+
+            if hrp and hrp.Parent then
+                local target = CFrame.new(best.part.Position + Vector3.new(0, 2, 0))
+                hrp.Anchored = true
+                hrp.CFrame = target
+                hrp.AssemblyLinearVelocity = Vector3.zero
+                hrp.AssemblyAngularVelocity = Vector3.zero
+                RS.Heartbeat:Wait()
+                if hrp and hrp.Parent then hrp.Anchored = false end
+            end
+
+            pcall(function()
+                if firetouchinterest then
+                    firetouchinterest(hrp, best.part, 0)
+                    firetouchinterest(hrp, best.part, 1)
+                end
+                if fireproximityprompt then
+                    local pp = best.o:FindFirstChildWhichIsA("ProximityPrompt", true)
+                    if pp then fireproximityprompt(pp) end
+                end
+            end)
+        end
+    end
+end)
+
+--// DIAMOND ESP (eigene Schleife, unabhängig von Auto Diamond)
+task.spawn(function()
+    while g.Parent do
+        if not diamondEspOn then
+            task.wait(0.4)
+        else
+            local now = tick()
+            local hrp = P.Character and P.Character:FindFirstChild("HumanoidRootPart")
+            for o, e in pairs(diamonds) do
+                if not o.Parent then
+                    updateDiamondHighlight(e, false)
+                    diamonds[o] = nil
+                else
+                    local part = getDiamondPart(o, e)
+                    if part and isVisible(o, e, now) and not isBad(o, e, now) then
+                        updateDiamondHighlight(e, true)
+                        if e.lb and hrp and part.Parent then
+                            e.lb.Text = "Diamond [" .. math.floor((part.Position - hrp.Position).Magnitude) .. "m]"
+                        end
+                    else
+                        updateDiamondHighlight(e, false)
+                    end
+                end
+            end
+            task.wait(0.2)
+        end
+    end
+end)
+
+--=====================================================================
+--// AUTO EIER FARM  (Ei holen -> E drücken -> zurück zu Home -> Boden klicken)
+--=====================================================================
+-- Alle Zustände in X.F (spart Locals wegen Lua-Limit von 200)
+X.F = {
+    on = false,                 -- Farm an/aus
+    sel = 0,                    -- 0 = alle Eier, sonst Index in E
+    home = nil,                 -- gespeicherte Home-Position (CFrame)
+    delay = 0.4,                -- Wartezeit am Ei vor dem Drücken
+    status = nil,               -- {de, en}
+    skip = {},                  -- Ei -> Zeit, bis zu der es ignoriert wird
+    tries = {},                 -- Ei -> Fehlversuche
+    wake = Instance.new("BindableEvent"),
+}
+do
+local F = X.F
+
+local function setStatus(de, en)
+    F.status = {de, en}
+    if F.onStatus then pcall(F.onStatus) end
+end
+F.setStatus = setStatus
+
+local function getChar()
+    local char = P.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hrp and hum and hum.Health > 0 then return hrp, hum end
+end
+F.getChar = getChar
+
+-- Home dauerhaft speichern (Datei, pro Spiel). Fallback: getgenv (bis zum Spielende)
+local HS = game:GetService("HttpService")
+local HOME_FILE = "AntonioHub_Home.json"
+function F.save()
+    local key = tostring(game.PlaceId)
+    local data = {}
+    pcall(function()
+        if isfile and readfile and isfile(HOME_FILE) then data = HS:JSONDecode(readfile(HOME_FILE)) end
+    end)
+    if type(data) ~= "table" then data = {} end
+    data[key] = F.home and {F.home:GetComponents()} or nil
+    genv.AntonioHubHome = genv.AntonioHubHome or {}
+    genv.AntonioHubHome[key] = data[key]
+    pcall(function()
+        if writefile then writefile(HOME_FILE, HS:JSONEncode(data)) end
+    end)
+end
+function F.load()
+    local key = tostring(game.PlaceId)
+    local comps
+    pcall(function()
+        if isfile and readfile and isfile(HOME_FILE) then
+            local d = HS:JSONDecode(readfile(HOME_FILE))
+            comps = d and d[key]
+        end
+    end)
+    if not comps and genv.AntonioHubHome then comps = genv.AntonioHubHome[key] end
+    if type(comps) == "table" and #comps == 12 then
+        local ok, cf = pcall(function() return CFrame.new(unpack(comps)) end)
+        if ok then F.home = cf end
+    end
+end
+F.load()
+
+-- Position festhalten (verhindert, dass das Spiel dich zurücksetzt)
+function F.pin(hrp, cf)
+    local function hold()
+        if hrp.Parent then
+            if (hrp.Position - cf.Position).Magnitude > 3 then hrp.CFrame = cf end
+            hrp.AssemblyLinearVelocity = Vector3.zero
+            hrp.AssemblyAngularVelocity = Vector3.zero
+        end
+    end
+    local c1 = RS.Stepped:Connect(hold)
+    local c2 = RS.Heartbeat:Connect(hold)
+    return {Disconnect = function() c1:Disconnect() c2:Disconnect() end}
+end
+
+
+local function tp(hrp, cf)
+    hrp.CFrame = cf
+    hrp.AssemblyLinearVelocity = Vector3.zero
+    hrp.AssemblyAngularVelocity = Vector3.zero
+end
+
+-- Nächstes passendes Ei suchen (nach Auswahl: alle oder ein bestimmtes)
+function F.find(pos)
+    local items = buildItems(pos)
+    local best, bd
+    local now = tick()
+    for _, it in ipairs(items) do
+        local t = it.tgt
+        local skipped = F.skip[t] and F.skip[t] > now
+        if t and t.Parent and not skipped and not (it.ign and not SHOW_BASES) then
+            local ok = false
+            if F.sel == 0 then
+                for _, e in ipairs(E) do
+                    if matchE(e, it) then ok = true break end
+                end
+            else
+                ok = matchE(E[F.sel], it)
+            end
+            if ok and (not bd or it.d < bd) then best, bd = it, it.d end
+        end
+    end
+    return best
+end
+
+-- Position eines ProximityPrompts (Part oder Attachment)
+local function ppPos(p)
+    local par = p.Parent
+    if par and par:IsA("Attachment") then return par.WorldPosition end
+    if par and par:IsA("BasePart") then return par.Position end
+    if par and par:IsA("Model") then return par:GetPivot().Position end
+    return nil
+end
+
+-- Alle Prompts, die zu diesem Ei gehören (max. 15 Studs vom Ei entfernt), nächster zuerst
+function F.prompts(t, part)
+    local list, seen = {}, {}
+    local center = part.Position
+    local function add(p)
+        if p and p:IsA("ProximityPrompt") and not seen[p] and p.Enabled then
+            local pos = ppPos(p)
+            if pos and (pos - center).Magnitude <= 15 then
+                seen[p] = true
+                list[#list+1] = {p = p, d = (pos - center).Magnitude}
+            end
+        end
+    end
+    add(t)
+    for _, d in ipairs(t:GetDescendants()) do add(d) end
+    local par = t.Parent
+    if par and par ~= workspace and par:IsA("Model") then
+        local n = 0
+        for _, d in ipairs(par:GetDescendants()) do
+            n = n + 1 if n > 300 then break end
+            add(d)
+        end
+    end
+    for o in pairs(cand) do
+        if o.Parent and o.ClassName == "ProximityPrompt" then add(o) end
+    end
+    table.sort(list, function(a, b) return a.d < b.d end)
+    local out = {}
+    for i = 1, math.min(#list, 3) do out[i] = list[i].p end
+    return out
+end
+
+-- Zum Ei teleportieren und E drücken. Gibt true zurück, wenn das Ei weg ist (= eingesammelt)
+function F.grab(it, hrp)
+    local t = it.tgt
+    local part = t:IsA("BasePart") and t or t:FindFirstChildWhichIsA("BasePart", true)
+    if not part then return false end
+
+    local pps = F.prompts(t, part)
+    local aim = part.Position
+    if pps[1] then aim = ppPos(pps[1]) or aim end
+
+    local cf = CFrame.new(aim + Vector3.new(0, 2, 0))
+    tp(hrp, cf)
+    local pin = F.pin(hrp, cf)       -- hält dich am Ei fest (ohne Anchor, damit der Server die Position sieht)
+    task.wait(F.delay + 0.25)
+
+    if #pps == 0 then pps = F.prompts(t, part) end   -- Prompt wurde evtl. erst jetzt geladen
+    for _, pp in ipairs(pps) do
+        pcall(function()
+            pp.RequiresLineOfSight = false
+            pp.MaxActivationDistance = math.max(pp.MaxActivationDistance, 40)
+        end)
+    end
+
+    local function gone()
+        if not (t.Parent and part.Parent) then return true end
+        local p = pps[1]
+        if p and (not p.Parent or not p.Enabled) then return true end
+        return false
+    end
+
+    do
+        local p1 = pps[1]
+        local dd = p1 and ppPos(p1) and (ppPos(p1) - hrp.Position).Magnitude or -1
+        if p1 then
+            setStatus("Drücke E: " .. (p1.ObjectText ~= "" and p1.ObjectText or p1.ActionText), "Pressing E: " .. (p1.ObjectText ~= "" and p1.ObjectText or p1.ActionText))
+        else
+            setStatus("Kein Prompt gefunden - drücke E", "No prompt found - pressing E")
+        end
+        print(string.format("[AntonioHub] Prompts: %d | Obj='%s' Act='%s' Hold=%.2f Dist=%.1f | fire=%s",
+            #pps, p1 and p1.ObjectText or "-", p1 and p1.ActionText or "-", p1 and p1.HoldDuration or 0, dd, tostring(fireproximityprompt ~= nil)))
+    end
+    for attempt = 1, 4 do
+        -- 1) Prompt per Executor-Funktion auslösen
+        if fireproximityprompt then
+            for _, pp in ipairs(pps) do pcall(fireproximityprompt, pp) end
+        end
+        -- 2) Prompt-Eingabe direkt simulieren (hält die HoldDuration ein)
+        local pp1 = pps[1]
+        if pp1 then
+            pcall(function()
+                pp1:InputHoldBegin()
+                task.wait((pp1.HoldDuration or 0) + 0.1)
+                pp1:InputHoldEnd()
+            end)
+        end
+        -- 3) ab dem 2. Versuch zusätzlich echte E-Taste
+        if attempt >= 2 or not pp1 then
+            pcall(function()
+                VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                task.wait(math.max(pp1 and pp1.HoldDuration or 0, 0.05) + 0.12)
+                VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+            end)
+        end
+        local t1 = tick()
+        while tick() - t1 < 0.6 and not gone() do task.wait(0.05) end
+        if gone() or not F.on then break end
+    end
+
+    pin:Disconnect()
+    return gone()
+end
+
+-- Einmal auf den Boden vor dem Charakter klicken (Ei platzieren)
+function F.place(hrp)
+    local cam = workspace.CurrentCamera
+    local look = cam.CFrame.LookVector
+    local dir = Vector3.new(look.X, 0, look.Z)
+    dir = dir.Magnitude > 0.01 and dir.Unit or hrp.CFrame.LookVector
+    local p = hrp.Position + dir * 8 - Vector3.new(0, 3, 0)
+    local v, on = cam:WorldToScreenPoint(p)
+    local x, y
+    if on then
+        x, y = v.X, v.Y
+    else
+        local vs = cam.ViewportSize
+        x, y = vs.X / 2, vs.Y * 0.65
+    end
+    pcall(function()
+        VIM:SendMouseButtonEvent(x, y, 0, true, game, 0)
+        task.wait(0.05)
+        VIM:SendMouseButtonEvent(x, y, 0, false, game, 0)
+    end)
+end
+
+function F.goHome()
+    local hrp = getChar()
+    if hrp and F.home then tp(hrp, F.home) return true end
+    return false
+end
+
+task.spawn(function()
+    while g.Parent do
+        if not F.on then
+            F.wake.Event:Wait()
+            if not g.Parent then break end
+        end
+        if not F.on then continue end
+
+        local hrp = getChar()
+        if not hrp then
+            task.wait(0.5)
+            continue
+        end
+
+        -- Kein Home gesetzt -> aktuelle Position als Home übernehmen
+        if not F.home then
+            F.home = hrp.CFrame
+            F.save()
+            if F.onHome then pcall(F.onHome) end
+        end
+
+        local it = F.find(hrp.Position)
+        if not it then
+            setStatus("Aktuell keins da", "None available right now")
+            task.wait(1.5)
+        else
+            local nm = (F.sel ~= 0 and (E[F.sel][1]:gsub(" %(alle%)",""):gsub("[ %-]Ei$",""))) or X.base(it) or it.n or "Ei"
+            if type(nm) ~= "string" or nm == "" then nm = "Ei" end
+            setStatus("Hole Ei: " .. nm, "Fetching egg: " .. nm)
+
+            local got = F.grab(it, hrp)
+            local t = it.tgt
+            if got then
+                F.tries[t] = nil
+                F.skip[t] = tick() + 3
+            else
+                local n = (F.tries[t] or 0) + 1
+                F.tries[t] = n
+                F.skip[t] = tick() + 5 * n
+            end
+
+            if F.on then
+                setStatus("Zurück zu Home...", "Returning home...")
+                local hrp2 = getChar()
+                if hrp2 and F.home then
+                    tp(hrp2, F.home)
+                    local pin = F.pin(hrp2, F.home)   -- am Home festhalten
+                    task.wait(0.45)
+                    F.place(hrp2)
+                    task.wait(0.6)
+                    pin:Disconnect()
+                end
+            end
+        end
+    end
+end)
+end
+
+--// ANTI-AFK
+task.spawn(function()
+    while g.Parent do
+        if antiAfkOn then
+            pcall(function()
+                VIM:SendMouseButtonEvent(100, 100, 0, true, game, 0)
+                task.wait(0.05)
+                VIM:SendMouseButtonEvent(100, 100, 0, false, game, 0)
+            end)
+            task.wait(AFK_INTERVAL)
+        else
+            task.wait(1)
+        end
+    end
+end)
+
+--=====================================================================
+--// PERFORMANCE (Misc) + INFO-LEISTE (Einstellungen)
+--=====================================================================
+X.perf={saved=setmetatable({},{__mode="k"}),fx=setmetatable({},{__mode="k"}),gen=0,ui={}}
+X.hud={on=false,acc=0,n=0}
+do
+local PF=X.perf
+local H=X.hud
+local Lighting=game:GetService("Lighting")
+local Stats=game:GetService("Stats")
+local FXC={ParticleEmitter=true,Trail=true,Beam=true,Smoke=true,Fire=true,Sparkles=true}
+
+-- ===== Grafik minimieren (Schatten, Effekte, Materialien, Texturen, Himmel/Nebel) =====
+function PF.gfxObj(o)
+    if o:IsA("Terrain") then return end
+    if o:IsA("BasePart") then
+        if PF.saved[o]==nil then PF.saved[o]={o.Material,o.Reflectance,o.CastShadow} end
+        o.Material=Enum.Material.SmoothPlastic o.Reflectance=0 o.CastShadow=false
+    elseif o:IsA("Decal") or o:IsA("Texture") then
+        if PF.saved[o]==nil then PF.saved[o]={o.Transparency} end
+        o.Transparency=1
+    elseif o:IsA("Atmosphere") then
+        if PF.saved[o]==nil then PF.saved[o]={o.Density} end
+        o.Density=0
+    elseif o:IsA("Clouds") or o:IsA("BloomEffect") or o:IsA("BlurEffect") or o:IsA("SunRaysEffect") or o:IsA("DepthOfFieldEffect") then
+        if PF.saved[o]==nil then PF.saved[o]={o.Enabled} end
+        o.Enabled=false
+    end
+end
+function PF.setGfx(v)
+    PF.gfx=v
+    PF.gen=PF.gen+1
+    local gen=PF.gen
+    if v then
+        if PF.sh and PF.sh.cur~=0 then PF.setShader(0) end
+        if not PF.L then
+            PF.L={}
+            pcall(function() PF.L.gs=Lighting.GlobalShadows end)
+            pcall(function() PF.L.q=settings().Rendering.QualityLevel end)
+            pcall(function() PF.L.dec=workspace.Terrain.Decoration end)
+        end
+        pcall(function() Lighting.GlobalShadows=false end)
+        pcall(function() settings().Rendering.QualityLevel=Enum.QualityLevel.Level01 end)
+        pcall(function() workspace.Terrain.Decoration=false end)
+        task.spawn(function()
+            local list=workspace:GetDescendants()
+            for i=1,#list do
+                if PF.gen~=gen then return end
+                pcall(PF.gfxObj,list[i])
+                if i%800==0 then task.wait() end
+            end
+            for _,o in ipairs(Lighting:GetDescendants()) do pcall(PF.gfxObj,o) end
+            local cam=workspace.CurrentCamera
+            if cam then for _,o in ipairs(cam:GetChildren()) do pcall(PF.gfxObj,o) end end
+        end)
+    else
+        for o,s in pairs(PF.saved) do
+            if o.Parent then
+                pcall(function()
+                    if o:IsA("BasePart") then o.Material,o.Reflectance,o.CastShadow=s[1],s[2],s[3]
+                    elseif o:IsA("Decal") or o:IsA("Texture") then o.Transparency=s[1]
+                    elseif o:IsA("Atmosphere") then o.Density=s[1]
+                    else o.Enabled=s[1] end
+                end)
+            end
+            PF.saved[o]=nil
+        end
+        if PF.L then
+            local L=PF.L
+            if L.gs~=nil then pcall(function() Lighting.GlobalShadows=L.gs end) end
+            if L.q~=nil then pcall(function() settings().Rendering.QualityLevel=L.q end) end
+            if L.dec~=nil then pcall(function() workspace.Terrain.Decoration=L.dec end) end
+            PF.L=nil
+        end
+    end
+end
+
+-- ===== Partikel & Effekte aus =====
+function PF.fxObj(o)
+    if FXC[o.ClassName] then
+        if PF.fx[o]==nil then PF.fx[o]=o.Enabled end
+        o.Enabled=false
+    end
+end
+function PF.setFx(v)
+    PF.fxOn=v
+    if v then
+        task.spawn(function()
+            local list=workspace:GetDescendants()
+            for i=1,#list do
+                if not PF.fxOn then return end
+                pcall(PF.fxObj,list[i])
+                if i%800==0 then task.wait() end
+            end
+        end)
+    else
+        for o,en in pairs(PF.fx) do
+            if o.Parent then pcall(function() o.Enabled=en end) end
+            PF.fx[o]=nil
+        end
+    end
+end
+
+-- ===== FPS-Limit aufheben =====
+function PF.setFps(v)
+    if not setfpscap then return end
+    if v then
+        if PF.cap0==nil then PF.cap0=(getfpscap and getfpscap()) or 60 end
+        pcall(setfpscap,999)
+    else
+        pcall(setfpscap,PF.cap0 or 60)
+        PF.cap0=nil
+    end
+end
+
+-- ===== 3D-Rendering aus (Farm im Hintergrund, spart am meisten) =====
+function PF.setRender(v)
+    pcall(function() RS:Set3dRenderingEnabled(not v) end)
+end
+
+-- ===== Shader (Lighting-Effekte: Bloom, SunRays, Farbkorrektur, Tiefenunschärfe) =====
+PF.sh={cur=0,k=2,objs={},names={{"Aus","Off"},{"Realistisch","Realistic"},{"Cinematic","Cinematic"},{"Lebhaft","Vivid"},{"Sonnenuntergang","Sunset"},{"Hell (Fullbright)","Fullbright"}}}
+PF.shK={0.5,1,1.6}
+function PF.shClear()
+    for _,o in ipairs(PF.sh.objs) do pcall(function() o:Destroy() end) end
+    PF.sh.objs={}
+    local s=PF.sh.L
+    if s then
+        for k,v in pairs(s) do pcall(function() Lighting[k]=v end) end
+        PF.sh.L=nil
+    end
+end
+function PF.shMk(cls,props)
+    local o=Instance.new(cls)
+    for k,v in pairs(props) do pcall(function() o[k]=v end) end
+    o.Name="AH_Shader"
+    o.Parent=Lighting
+    PF.sh.objs[#PF.sh.objs+1]=o
+    return o
+end
+function PF.shLight(t)
+    local s=PF.sh.L or {}
+    PF.sh.L=s
+    for k,v in pairs(t) do
+        if s[k]==nil then
+            local ok,cur=pcall(function() return Lighting[k] end)
+            if ok then s[k]=cur end
+        end
+        pcall(function() Lighting[k]=v end)
+    end
+end
+function PF.setShader(i)
+    local sh=PF.sh
+    sh.cur=i
+    PF.shClear()
+    if i~=0 then
+        -- Shader und "Grafik minimieren" schließen sich aus
+        if PF.gfx then
+            PF.setGfx(false)
+            if PF.ui.gfx then PF.ui.gfx(false) end
+        end
+        local k=PF.shK[sh.k]
+        local mk=PF.shMk
+        local function sr(v) return math.min(1,v*k) end
+        if i==1 then        -- Realistisch
+            mk("BloomEffect",{Intensity=0.35*k,Size=24,Threshold=1})
+            mk("SunRaysEffect",{Intensity=sr(0.12),Spread=0.6})
+            mk("ColorCorrectionEffect",{Contrast=0.08*k,Saturation=0.15*k})
+            PF.shLight({GlobalShadows=true,EnvironmentSpecularScale=1,EnvironmentDiffuseScale=1})
+        elseif i==2 then    -- Cinematic
+            mk("BloomEffect",{Intensity=0.5*k,Size=30,Threshold=0.9})
+            mk("SunRaysEffect",{Intensity=sr(0.2),Spread=0.7})
+            mk("ColorCorrectionEffect",{Contrast=0.2*k,Saturation=-0.1*k,TintColor=Color3.fromRGB(255,240,225)})
+            mk("DepthOfFieldEffect",{FarIntensity=math.min(1,0.25*k),FocusDistance=60,InFocusRadius=40,NearIntensity=0})
+            PF.shLight({GlobalShadows=true})
+        elseif i==3 then    -- Lebhaft
+            mk("BloomEffect",{Intensity=0.3*k,Size=20,Threshold=1})
+            mk("SunRaysEffect",{Intensity=sr(0.1),Spread=0.5})
+            mk("ColorCorrectionEffect",{Contrast=0.15*k,Saturation=0.5*k})
+        elseif i==4 then    -- Sonnenuntergang
+            mk("BloomEffect",{Intensity=0.5*k,Size=28,Threshold=0.95})
+            mk("SunRaysEffect",{Intensity=sr(0.25),Spread=0.8})
+            mk("ColorCorrectionEffect",{Contrast=0.1*k,Saturation=0.2*k,TintColor=Color3.fromRGB(255,205,165)})
+            PF.shLight({ColorShift_Top=Color3.fromRGB(255,170,100),GlobalShadows=true})
+        elseif i==5 then    -- Hell (Fullbright)
+            PF.shLight({Brightness=3,Ambient=Color3.new(1,1,1),OutdoorAmbient=Color3.new(1,1,1),FogEnd=1e6,GlobalShadows=false})
+        end
+    end
+    if PF.onShader then pcall(PF.onShader) end
+end
+
+function PF.offAll()
+    PF.setShader(0)
+    PF.setGfx(false) PF.setFx(false) PF.setFps(false) PF.setRender(false)
+    for _,s in pairs(PF.ui) do pcall(s,false) end
+end
+
+bind(workspace.DescendantAdded,function(o)
+    if PF.gfx then pcall(PF.gfxObj,o) end
+    if PF.fxOn then pcall(PF.fxObj,o) end
+end)
+
+-- ===== Info-Leiste (FPS | Ping | Uhrzeit) =====
+H.lb=new("TextLabel",{Name="InfoBar",Position=UDim2.new(0,10,0,10),Size=UDim2.new(0,0,0,26),AutomaticSize=Enum.AutomaticSize.X,
+    BackgroundColor3=C.card,BackgroundTransparency=0.15,BorderSizePixel=0,Visible=false,
+    Text="FPS -  |  Ping -  |  --:--:--",TextColor3=C.txt,Font=FONTB,TextSize=12},g)
+round(H.lb,6) stroke(H.lb,C.border,1) pad(H.lb,0,10,0,10)
+
+bind(RS.RenderStepped,function(dt)
+    if H.on then H.acc=H.acc+dt H.n=H.n+1 end
+end)
+task.spawn(function()
+    while g.Parent do
+        if H.on then
+            local fps=H.n/math.max(H.acc,0.001)
+            H.acc,H.n=0,0
+            local ping="-"
+            pcall(function()
+                ping=tostring(math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue()+0.5))
+            end)
+            H.lb.Text=string.format("FPS %d  |  Ping %s ms  |  %s",math.floor(fps+0.5),ping,os.date("%H:%M:%S"))
+        end
+        task.wait(0.5)
+    end
+end)
+end
+
+--=====================================================================
+--// MENÜ BEFÜLLEN
+--=====================================================================
+do
+local function shortName(n) return (n:gsub(" %(alle%)",""):gsub("[ %-]Ei$","")) end
+
+local sets={}
+local eggIdx,mutIdx,evIdx,hvIdx={}, {}, {}, {}
+local MUTN={["Rainbow (alle)"]=true,["Retro (alle)"]=true,["Diamond (alle)"]=true,["Gold (alle)"]=true}
+local EVENTN={["Halloween-Ei"]=true,["Admin Abuse-Ei"]=true}   -- hier weitere Event-Eier eintragen
+local HEAVYN={["Heavy-Ei"]=true}
+for i,e in ipairs(E) do
+    if MUTN[e[1]] then mutIdx[#mutIdx+1]=i
+    elseif EVENTN[e[1]] then evIdx[#evIdx+1]=i
+    elseif HEAVYN[e[1]] then hvIdx[#hvIdx+1]=i
+    else eggIdx[#eggIdx+1]=i end
+end
+
+-- Vorwärtsdeklarationen (Setter der Schalter)
+local setEggAll,setMutAll,setEvtAll,setHideAll
+local setDiaAuto,setDiaEsp,setQuick,setAfk,setPlayer
+local hideSet={}
+
+local function allOn(list)
+    for _,i in ipairs(list) do if not active[i] then return false end end
+    return true
+end
+local function refreshMasters()
+    if setEggAll then setEggAll(allOn(eggIdx)) end
+    if setMutAll then setMutAll(allOn(mutIdx)) end
+    if setEvtAll then setEvtAll(allOn(evIdx)) end
+end
+local function refreshHideMaster()
+    if not setHideAll then return end
+    for _,d in ipairs(HIDE) do if not hideOn[d.id] then setHideAll(false) return end end
+    setHideAll(true)
+end
+
+-- ESP Reset: alle aktiven ESP ausschalten
+local function espReset()
+    for i,s in pairs(sets) do s(false) active[i]=false end
+    refreshMasters()
+    diamondEspOn=false
+    if setDiaEsp then setDiaEsp(false) end
+    for _,e in pairs(diamonds) do updateDiamondHighlight(e,false) end
+    playerEspOn=false
+    if setPlayer then setPlayer(false) end
+    scan()
+end
+
+-- Alle Funktionen aus
+local function offAll()
+    espReset()
+    diamondOn=false if setDiaAuto then setDiaAuto(false) end
+    X.F.on=false if X.F.setUI then X.F.setUI(false) end
+    X.F.setStatus("Bereit","Ready")
+    quickOn=false if setQuick then setQuick(false) end
+    antiAfkOn=false if setAfk then setAfk(false) end
+    for _,d in ipairs(HIDE) do
+        setHide(d.id,false)
+        if hideSet[d.id] then hideSet[d.id](false) end
+    end
+    if setHideAll then setHideAll(false) end
+    X.perf.offAll()
+end
+
+-- Standardwerte für Controls der ESP-Einstellungsseiten
+local defEgg,defPly={}, {}
+local defCtl=defEgg
+local function stog(parent,name,desc,col,cb,default)
+    local set=toggle(parent,name,desc,col,cb)
+    set(default)
+    defCtl[#defCtl+1]={set,default}
+    return set
+end
+local function sseg(parent,name,desc,opts,idx,cb,bw)
+    local set=segmented(parent,name,desc,opts,idx,cb,bw)
+    defCtl[#defCtl+1]={set,idx}
+    return set
+end
+local function scol(parent,name,desc,default,cb)
+    local set=colorRow(parent,name,desc,default,cb)
+    defCtl[#defCtl+1]={set,default}
+    return set
+end
+local function resetEgg()
+    for k,v in pairs(S0) do S[k]=v end
+    for _,c in ipairs(defEgg) do c[1](c[2]) end
+    scan()
+end
+local function resetPly()
+    for k,v in pairs(PS0) do PS[k]=v end
+    playerEspOn=false
+    for _,c in ipairs(defPly) do c[1](c[2]) end
+end
+
+-- gemeinsam genutzte Werte (außerhalb der Seiten-Blöcke, wegen Lua-Limit von 200 Locals)
+local distVals={250,500,1000,math.huge}
+local binds,listening
+local bindUpdaters={}
+local unload
+local function refreshBinds()
+    for _,u in ipairs(bindUpdaters) do u() end
+    refreshLang()
+end
+
+-- ===== ESP =====
+do
+local genCard=section(pESP,{"Allgemein","General"})
+toggle(genCard,{"Basen zeigen","Show bases"},{"Zeigt auch Eier in Basis-Nähe an.","Also shows eggs near bases."},nil,function(v)
+    SHOW_BASES=v scan()
+end)
+buttonRow(genCard,{"ESP Reset","ESP Reset"},{"Alle aktiven ESP aus (Eier, Spieler, Diamant).","All active ESP off (eggs, players, diamonds)."},{"Ausschalten","Turn off"},true,function()
+    espReset()
+end)
+
+local eggCard
+eggCard,setEggAll=section(pESP,{"Eier","Eggs"},function(v)
+    for _,i in ipairs(eggIdx) do sets[i](v) active[i]=v end
+    scan() refreshMasters()
+end)
+local eggGrid=grid(eggCard,2,28)
+for _,i in ipairs(eggIdx) do
+    sets[i]=toggle(eggGrid,shortName(E[i][1]),nil,COL[i],function(v)
+        active[i]=v scan() refreshMasters()
+    end)
+end
+
+local evCard
+evCard,setEvtAll=section(pESP,{"Event","Event"},function(v)
+    for _,i in ipairs(evIdx) do sets[i](v) active[i]=v end
+    scan() refreshMasters()
+end)
+local evGrid=grid(evCard,2,28)
+for _,i in ipairs(evIdx) do
+    sets[i]=toggle(evGrid,shortName(E[i][1]),nil,COL[i],function(v)
+        active[i]=v scan() refreshMasters()
+    end)
+end
+
+local hvCard=section(pESP,{"Heavy","Heavy"})
+local hvGrid=grid(hvCard,2,28)
+for _,i in ipairs(hvIdx) do
+    sets[i]=toggle(hvGrid,shortName(E[i][1]),nil,COL[i],function(v)
+        active[i]=v scan()
+    end)
+end
+
+local mutCard
+mutCard,setMutAll=section(pESP,{"Mutationen","Mutations"},function(v)
+    for _,i in ipairs(mutIdx) do sets[i](v) active[i]=v end
+    scan() refreshMasters()
+end)
+local mutGrid=grid(mutCard,2,28)
+for _,i in ipairs(mutIdx) do
+    sets[i]=toggle(mutGrid,shortName(E[i][1]),nil,COL[i],function(v)
+        active[i]=v scan() refreshMasters()
+    end)
+end
+
+end
+
+-- ===== EGG ESP (Einstellungen) =====
+do
+defCtl=defEgg
+local viewCard=section(pEgg,{"Darstellung","Display"})
+sseg(viewCard,{"Textgröße","Text size"},{"Größe der ESP-Beschriftung.","Size of the ESP labels."},
+    {{"Klein","Small"},{"Normal","Normal"},{"Groß","Large"}},2,function(i)
+    S.textSize=({12,15,19})[i]
+end,56)
+stog(viewCard,{"Name anzeigen","Show name"},{"Zeigt den Namen des Eis.","Shows the egg's name."},nil,function(v) S.showName=v end,true)
+stog(viewCard,{"Distanz anzeigen","Show distance"},{"Zeigt die Entfernung in Metern.","Shows the distance in meters."},nil,function(v) S.showDist=v end,true)
+stog(viewCard,{"Größe anzeigen","Show size"},{"Zeigt die Objektgröße hinter dem Namen.","Shows the object size after the name."},nil,function(v) S.showSize=v end,true)
+stog(viewCard,{"Umriss","Outline"},{"Hebt das Ei mit einem farbigen Umriss hervor.","Highlights the egg with a colored outline."},nil,function(v) S.showHl=v end,true)
+
+local eColCard=section(pEgg,{"Farbe","Color"})
+stog(eColCard,{"Eigene Farbe","Custom color"},{"Alle Eier in einer Farbe statt Typ-Farben.","All eggs in one color instead of type colors."},nil,function(v) S.useCol=v end,false)
+scol(eColCard,{"Farbe wählen","Pick color"},{"Klick auf das Feld öffnet den Farbwähler.","Click the swatch to open the color picker."},S0.col,function(c) S.col=c end)
+
+local trCard=section(pEgg,{"Tracer","Tracer"})
+stog(trCard,{"Tracer Linien","Tracer lines"},{"Linie vom Bildschirm zu jedem markierten Ei.","Line from the screen to every marked egg."},nil,function(v) S.tracers=v end,false)
+sseg(trCard,{"Startpunkt","Origin"},{"Wo die Linien beginnen.","Where the lines start."},{{"Unten","Bottom"},{"Mitte","Center"}},1,function(i)
+    S.tracerFrom=(i==1) and "bottom" or "center"
+end,52)
+sseg(trCard,{"Linienstärke","Line width"},{"Dicke der Tracer in Pixeln.","Tracer thickness in pixels."},{"1","2","3"},2,function(i)
+    S.tracerThick=i
+end,36)
+
+local fltCard=section(pEgg,{"Filter","Filter"})
+sseg(fltCard,{"Max. Distanz","Max. distance"},{"Weiter entfernte Eier werden ausgeblendet.","Eggs farther away are hidden."},{"250","500","1000","∞"},4,function(i)
+    S.maxDist=distVals[i]
+end,44)
+local markVals={10,20,30,50}
+sseg(fltCard,{"Max. Markierungen","Max. markers"},{"Begrenzt die Anzahl gleichzeitiger Markierungen.","Limits the number of simultaneous markers."},{"10","20","30","50"},3,function(i)
+    S.maxMarks=markVals[i] scan()
+end,44)
+
+local eSysCard=section(pEgg,{"System","System"})
+buttonRow(eSysCard,{"Standard wiederherstellen","Restore defaults"},{"Setzt alle Egg-ESP-Einstellungen zurück.","Resets all egg ESP settings."},{"Zurücksetzen","Reset"},true,function()
+    resetEgg()
+end)
+
+end
+
+-- ===== SPIELER ESP (Einstellungen) =====
+do
+defCtl=defPly
+local plMain=section(pPly,{"Spieler ESP","Player ESP"})
+setPlayer=stog(plMain,{"Spieler ESP","Player ESP"},{"Zeigt andere Spieler durch Wände.","Shows other players through walls."},Color3.fromRGB(255,50,50),function(v)
+    playerEspOn=v
+end,false)
+
+local plInfo=section(pPly,{"Anzeige","Display"})
+sseg(plInfo,{"Namen","Names"},{"Spielername, Anzeigename oder beides.","Username, display name or both."},
+    {{"Aus","Off"},{"Name","Name"},{"Anzeige","Display"},{"Beide","Both"}},4,function(i)
+    PS.nameMode=i
+end,50)
+stog(plInfo,{"Distanz anzeigen","Show distance"},{"Zeigt die Entfernung in Metern.","Shows the distance in meters."},nil,function(v) PS.dist=v end,true)
+stog(plInfo,{"Item ESP","Item ESP"},{"Zeigt das Item nur, wenn der Spieler eins in der Hand hat.","Shows the item only while the player is holding one."},nil,function(v) PS.item=v end,false)
+stog(plInfo,{"Leaderstats ESP","Leaderstats ESP"},{"Zeigt die Leaderstats (z.B. Coins, Kills) des Spielers.","Shows the player's leaderstats (e.g. coins, kills)."},nil,function(v) PS.leader=v end,false)
+stog(plInfo,{"Umriss","Outline"},{"Farbiger Umriss um den Spieler.","Colored outline around the player."},nil,function(v) PS.hl=v end,true)
+
+local plExtra=section(pPly,{"Zusätzlich","Extras"})
+stog(plExtra,{"Skeleton ESP","Skeleton ESP"},{"Skelett inkl. Kopf (benötigt Drawing).","Skeleton incl. head (needs Drawing)."},nil,function(v) PS.skel=v end,false)
+stog(plExtra,{"Box ESP","Box ESP"},{"Rahmen um den Spieler (benötigt Drawing).","Box around the player (needs Drawing)."},nil,function(v) PS.box=v end,false)
+sseg(plExtra,{"Box-Typ","Box type"},{"2D-Rahmen, 3D-Quader oder nur Ecken.","2D frame, 3D cuboid or corners only."},
+    {"2D","3D",{"Ecken","Corners"}},1,function(i) PS.boxType=i end,50)
+stog(plExtra,{"Tracer","Tracer"},{"Linie zu jedem Spieler.","Line to every player."},nil,function(v) PS.tracer=v end,false)
+sseg(plExtra,{"Tracer-Start","Tracer origin"},{"Wo die Linie beginnt.","Where the line starts."},
+    {{"Unten","Bottom"},{"Mitte","Center"}},1,function(i) PS.tracerFrom=i end,52)
+
+local plCol=section(pPly,{"Farbe & Filter","Color & filter"})
+scol(plCol,{"Farbe wählen","Pick color"},{"Farbe für Text, Umriss, Skeleton, Box und Tracer.","Color for text, outline, skeleton, box and tracer."},PS0.col,function(c) PS.col=c end)
+sseg(plCol,{"Max. Distanz","Max. distance"},{"Weiter entfernte Spieler werden ausgeblendet.","Players farther away are hidden."},{"250","500","1000","∞"},4,function(i)
+    PS.maxDist=distVals[i]
+end,44)
+
+local pSysCard=section(pPly,{"System","System"})
+buttonRow(pSysCard,{"Standard wiederherstellen","Restore defaults"},{"Setzt alle Spieler-ESP-Einstellungen zurück.","Resets all player ESP settings."},{"Zurücksetzen","Reset"},true,function()
+    resetPly()
+end)
+
+end
+
+-- ===== FARM =====
+do
+local F=X.F
+
+-- ---------- Auto Eier Farm ----------
+local efCard=section(pFarm,{"Auto Eier Farm","Auto egg farm"})
+F.setUI=toggle(efCard,{"Auto Eier Farm","Auto egg farm"},{"Ei holen (E) → Home → Boden klicken.","Grab egg (E) → home → click ground."},Color3.fromRGB(255,140,0),function(v)
+    F.on=v
+    if v then
+        F.setStatus("Suche Ei...","Searching egg...")
+        F.wake:Fire()
+    else
+        F.setStatus("Bereit","Ready")
+    end
+end)
+
+-- Status-Zeile (zeigt z.B. "Aktuell keins da")
+local stRow=new("Frame",{BackgroundTransparency=1,Size=UDim2.new(1,0,0,26)},efCard)
+new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,10,0,0),Size=UDim2.new(0,70,1,0),Text={"Status","Status"},TextColor3=C.sub,
+    Font=FONT,TextSize=12,TextXAlignment=Enum.TextXAlignment.Left},stRow)
+local stLbl=new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,80,0,0),Size=UDim2.new(1,-90,1,0),
+    Text=function() return tr(F.status or {"Bereit","Ready"}) end,TextColor3=C.accent,
+    Font=FONTB,TextSize=12,TextXAlignment=Enum.TextXAlignment.Right,TextTruncate=Enum.TextTruncate.AtEnd},stRow)
+accentHooks[#accentHooks+1]=function() stLbl.TextColor3=C.accent end
+F.onStatus=function() stLbl.Text=tr(F.status or {"Bereit","Ready"}) end
+
+-- Ei-Auswahl: Klick = nächstes, Rechtsklick = vorheriges ("Alle" + jedes Ei)
+local function selName(k)
+    if k==0 then return tr({"Alle","All"}) end
+    return shortName(E[k][1])
+end
+local selRow=new("Frame",{BackgroundTransparency=1,Size=UDim2.new(1,0,0,44)},efCard)
+new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,10,0,7),Size=UDim2.new(1,-140,0,16),Text={"Ei-Auswahl","Egg selection"},TextColor3=C.txt,
+    Font=FONT,TextSize=13,TextXAlignment=Enum.TextXAlignment.Left},selRow)
+new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,10,0,24),Size=UDim2.new(1,-140,0,14),
+    Text={"Klick = weiter, Rechtsklick = zurück.","Click = next, right-click = back."},TextColor3=C.sub,
+    Font=FONT,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},selRow)
+local selBtn=new("TextButton",{AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-8,0.5,0),Size=UDim2.new(0,120,0,26),BackgroundColor3=C.btn,
+    Text=function() return selName(F.sel) end,TextColor3=C.accent,Font=FONT,TextSize=12,AutoButtonColor=false,TextTruncate=Enum.TextTruncate.AtEnd},selRow)
+round(selBtn,6)
+local selStroke=stroke(selBtn,C.border,1)
+accentHooks[#accentHooks+1]=function() selBtn.TextColor3=C.accent end
+selBtn.MouseEnter:Connect(function() tw(selStroke,{Color=C.accent}) tw(selBtn,{BackgroundColor3=C.off}) end)
+selBtn.MouseLeave:Connect(function() tw(selStroke,{Color=C.border}) tw(selBtn,{BackgroundColor3=C.btn}) end)
+local function changeSel(d)
+    F.sel=(F.sel+d)%(#E+1)
+    selBtn.Text=selName(F.sel)
+    for k in pairs(F.skip) do F.skip[k]=nil end
+    for k in pairs(F.tries) do F.tries[k]=nil end
+    if F.on then F.setStatus("Suche Ei...","Searching egg...") end
+end
+selBtn.MouseButton1Click:Connect(function() changeSel(1) end)
+selBtn.MouseButton2Click:Connect(function() changeSel(-1) end)
+X.reg({"Ei-Auswahl","Egg selection"},function() return F.sel end,function(v)
+    if type(v)=="number" and v>=0 and v<=#E then F.sel=v selBtn.Text=selName(F.sel) end
+end)
+
+local fDelays={0.2,0.4,0.6,1.0}
+segmented(efCard,{"Wartezeit am Ei","Wait at egg"},{"Sekunden bis E gedrückt wird.","Seconds before E is pressed."},{"0.2","0.4","0.6","1.0"},2,function(i)
+    F.delay=fDelays[i]
+end,40)
+
+-- ---------- Home ----------
+local homeCard=section(pFarm,{"Home","Home"})
+local function homeText()
+    if not F.home then return {"Kein Home gesetzt (wird beim Start automatisch gesetzt).","No home set (auto-set on start)."} end
+    local p=F.home.Position
+    return {string.format("Home: %d, %d, %d",p.X,p.Y,p.Z),string.format("Home: %d, %d, %d",p.X,p.Y,p.Z)}
+end
+local homeDesc={"",""}
+buttonRow(homeCard,{"Home setzen","Set home"},{"Speichert deine Position (bleibt gespeichert).","Saves your position (persists)."},{"Setzen","Set"},false,function(setDesc,resetDesc)
+    local hrp=F.getChar()
+    if not hrp then return end
+    F.home=hrp.CFrame
+    F.save()
+    setDesc(homeText())
+    task.delay(3,resetDesc)
+end)
+buttonRow(homeCard,{"Zu Home","Go home"},{"Teleportiert dich sofort zu deinem Home.","Teleports you to your home right away."},{"Teleport","Teleport"},false,function(setDesc,resetDesc)
+    if F.goHome() then
+        setDesc({"Teleportiert!","Teleported!"})
+    else
+        setDesc({"Noch kein Home gesetzt.","No home set yet."})
+    end
+    task.delay(3,resetDesc)
+end)
+buttonRow(homeCard,{"Home löschen","Clear home"},{"Entfernt das gespeicherte Home.","Removes the saved home."},{"Löschen","Clear"},true,function(setDesc,resetDesc)
+    F.home=nil
+    F.save()
+    setDesc({"Home gelöscht.","Home cleared."})
+    task.delay(3,resetDesc)
+end)
+
+-- ---------- Diamant ----------
+local diaCard=section(pFarm,{"Diamant","Diamond"})
+local diaGrid=grid(diaCard,2,28)
+setDiaAuto=toggle(diaGrid,"Auto Diamond",nil,Color3.fromRGB(0,240,255),function(v)
+    diamondOn=v
+    if v then diamondWake:Fire() end
+end)
+setDiaEsp=toggle(diaGrid,"Diamond ESP",nil,Color3.fromRGB(0,180,220),function(v)
+    diamondEspOn=v
+    for _,e in pairs(diamonds) do updateDiamondHighlight(e,diamondEspOn) end
+end)
+
+local quickCard=section(pFarm,{"Quick-Event","Quick event"})
+setQuick=toggle(quickCard,{"Auto Quick-Event","Auto quick event"},{"Klickt x3-Quick-Events automatisch weg.","Automatically clicks x3 quick events."},Color3.fromRGB(255,215,0),function(v)
+    quickOn=v
+end)
+local delays={0.2,0.4,0.6,0.8,1.0}
+local delayLabels={}
+local startIdx=2
+for i,d in ipairs(delays) do
+    delayLabels[i]=string.format("%.1f",d)
+    if d==QUICK_DELAY then startIdx=i end
+end
+segmented(quickCard,{"Quick-Event Delay","Quick event delay"},{"Wartezeit in Sekunden vor dem Klick.","Wait time in seconds before the click."},delayLabels,startIdx,function(i)
+    QUICK_DELAY=delays[i]
+end)
+
+end
+
+-- ===== MISC =====
+do
+local hideCard
+hideCard,setHideAll=section(pMisc,{"Umgebung ausblenden","Hide environment"},function(v)
+    for _,d in ipairs(HIDE) do
+        hideSet[d.id](v)
+        setHide(d.id,v)
+    end
+end)
+local hideGrid=grid(hideCard,2,28)
+for _,d in ipairs(HIDE) do
+    hideSet[d.id]=toggle(hideGrid,d.name,nil,nil,function(v)
+        setHide(d.id,v)
+        refreshHideMaster()
+    end)
+end
+
+-- ---------- Performance ----------
+local perfCard=section(pMisc,{"Performance","Performance"})
+local PF=X.perf
+buttonRow(perfCard,{"FPS Boost","FPS boost"},{"Grafik, Effekte und FPS-Limit auf einmal.","Graphics, effects and FPS cap in one go."},{"Aktivieren","Apply"},false,function(setDesc,resetDesc)
+    PF.ui.gfx(true) PF.setGfx(true)
+    PF.ui.fx(true) PF.setFx(true)
+    PF.ui.fps(true) PF.setFps(true)
+    setDesc({"Boost aktiv!","Boost active!"})
+    task.delay(3,resetDesc)
+end)
+PF.ui.gfx=toggle(perfCard,{"Grafik minimieren","Minimize graphics"},{"Schatten, Materialien, Texturen, Himmel & Nebel runter.","Lowers shadows, materials, textures, sky & fog."},nil,function(v) PF.setGfx(v) end)
+PF.ui.fx=toggle(perfCard,{"Partikel & Effekte aus","Particles & effects off"},{"Schaltet Partikel, Feuer, Rauch und Trails aus.","Disables particles, fire, smoke and trails."},nil,function(v) PF.setFx(v) end)
+PF.ui.fps=toggle(perfCard,{"FPS-Limit aufheben","Unlock FPS cap"},{"Hebt die FPS-Begrenzung auf (braucht setfpscap).","Removes the FPS cap (needs setfpscap)."},nil,function(v) PF.setFps(v) end)
+PF.ui.render=toggle(perfCard,{"3D-Rendering aus","3D rendering off"},{"Schwarzer Bildschirm, ideal zum AFK-Farmen.","Black screen, ideal for AFK farming."},nil,function(v) PF.setRender(v) end)
+
+-- ---------- Shader ----------
+local shCard=section(pMisc,{"Shader","Shaders"})
+local SH=PF.sh
+local function shName(k) return tr(SH.names[k+1]) end
+local shRow=new("Frame",{BackgroundTransparency=1,Size=UDim2.new(1,0,0,44)},shCard)
+new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,10,0,7),Size=UDim2.new(1,-170,0,16),Text={"Shader-Preset","Shader preset"},TextColor3=C.txt,
+    Font=FONT,TextSize=13,TextXAlignment=Enum.TextXAlignment.Left},shRow)
+new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,10,0,24),Size=UDim2.new(1,-170,0,14),
+    Text={"Klick = weiter, Rechtsklick = zurück.","Click = next, right-click = back."},TextColor3=C.sub,
+    Font=FONT,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},shRow)
+local shBtn=new("TextButton",{AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-8,0.5,0),Size=UDim2.new(0,150,0,26),BackgroundColor3=C.btn,
+    Text=function() return shName(SH.cur) end,TextColor3=C.accent,Font=FONT,TextSize=12,AutoButtonColor=false,TextTruncate=Enum.TextTruncate.AtEnd},shRow)
+round(shBtn,6)
+local shStroke=stroke(shBtn,C.border,1)
+accentHooks[#accentHooks+1]=function() shBtn.TextColor3=C.accent end
+shBtn.MouseEnter:Connect(function() tw(shStroke,{Color=C.accent}) tw(shBtn,{BackgroundColor3=C.off}) end)
+shBtn.MouseLeave:Connect(function() tw(shStroke,{Color=C.border}) tw(shBtn,{BackgroundColor3=C.btn}) end)
+PF.onShader=function() shBtn.Text=shName(SH.cur) end
+X.reg({"Preset","Preset"},function() return SH.cur end,function(v)
+    if type(v)=="number" and v>=0 and v<#SH.names then PF.setShader(v) end
+end)
+shBtn.MouseButton1Click:Connect(function() PF.setShader((SH.cur+1)%#SH.names) end)
+shBtn.MouseButton2Click:Connect(function() PF.setShader((SH.cur-1)%#SH.names) end)
+segmented(shCard,{"Stärke","Intensity"},{"Wie kräftig die Effekte sind.","How strong the effects are."},{{"Schwach","Low"},{"Normal","Normal"},{"Stark","High"}},2,function(i)
+    SH.k=i
+    if SH.cur~=0 then PF.setShader(SH.cur) end
+end,56)
+
+local miscCard=section(pMisc,{"Allgemein","General"})
+setAfk=toggle(miscCard,"Anti-AFK",{"Verhindert Kick wegen Inaktivität.","Prevents idle kicks."},nil,function(v)
+    antiAfkOn=v
+end)
+local afkVals={60,120,180,300}
+segmented(miscCard,{"AFK Intervall","AFK interval"},{"Sekunden zwischen den Anti-AFK-Klicks.","Seconds between anti-AFK clicks."},{"60","120","180","300"},2,function(i)
+    AFK_INTERVAL=afkVals[i]
+end,40)
+
+local actCard=section(pMisc,{"Aktionen","Actions"})
+buttonRow(actCard,"Server Hop",{"Wechselt auf einen anderen Server.","Switches to a different server."},{"Wechseln","Switch"},false,function(setDesc,resetDesc)
+    setDesc({"Suche Server...","Searching servers..."})
+    local ok,msg=pcall(X.hop)
+    setDesc(ok and msg or {"Fehler beim Wechseln","Switch failed"})
+    task.delay(3,resetDesc)
+end)
+buttonRow(actCard,"Server Rejoin",{"Verbindet dich neu mit diesem Server.","Reconnects you to this server."},{"Rejoin","Rejoin"},false,function(setDesc,resetDesc)
+    setDesc({"Verbinde neu...","Rejoining..."})
+    local ok,msg=pcall(X.rejoin)
+    setDesc(ok and msg or {"Fehler beim Rejoin","Rejoin failed"})
+    task.delay(3,resetDesc)
+end)
+
+end
+
+-- ===== EINSTELLUNGEN (Menü) =====
+do
+local setSizeSeg,setTransSeg
+
+--------------------------------------------------------------------
+-- THEME anwenden
+--  * X.applyTheme()         -> alles neu einfärben
+--  * X.applyTheme("accent") -> nur Akzent-Objekte (schnell, für den Farbwähler)
+--------------------------------------------------------------------
+function X.applyTheme(only)
+    local th=X.THEMES[X.theme.idx] or X.THEMES[1]
+    if not only then
+        for k,v in pairs(th.c) do C[k]=v end
+    end
+    C.accent=X.theme.accent or th.c.accent
+    C.btxt=C.accent
+    for o,map in pairs(X.rb) do
+        if o.Parent then
+            for prop,role in pairs(map) do
+                if not only or role==only then
+                    pcall(function() o[prop]=C[role] end)
+                end
+            end
+        end
+    end
+    for _,h in ipairs(accentHooks) do pcall(h) end
+    if current then selectTab(current) end
+end
+function X.setTheme(i)
+    if not X.THEMES[i] then return end
+    X.theme.idx=i
+    X.theme.accent=nil               -- Theme bringt seine eigene Akzentfarbe mit
+    X.applyTheme()
+    if X.setAccPick then X.setAccPick(C.accent) end
+end
+function X.setAccent(col,fromPicker)
+    X.theme.accent=col
+    X.applyTheme("accent")
+    if not fromPicker and X.setAccPick then X.setAccPick(col) end
+end
+
+-- Tastaturbelegung
+binds={
+    menuBind,
+    {name={"Auto Diamond","Auto Diamond"},fn=function()
+        diamondOn=not diamondOn
+        if setDiaAuto then setDiaAuto(diamondOn) end
+        if diamondOn then diamondWake:Fire() end
+    end},
+    {name={"Auto Eier Farm","Auto egg farm"},fn=function()
+        local F=X.F
+        F.on=not F.on
+        if F.setUI then F.setUI(F.on) end
+        if F.on then
+            F.setStatus("Suche Ei...","Searching egg...")
+            F.wake:Fire()
+        else
+            F.setStatus("Bereit","Ready")
+        end
+    end},
+    {name={"Auto Quick-Event","Auto quick event"},fn=function()
+        quickOn=not quickOn
+        if setQuick then setQuick(quickOn) end
+    end},
+    {name={"Spieler ESP","Player ESP"},fn=function()
+        playerEspOn=not playerEspOn
+        if setPlayer then setPlayer(playerEspOn) end
+    end},
+    {name={"ESP Reset","ESP Reset"},fn=function() espReset() end},
+    {name={"Alle Funktionen aus","Disable all features"},fn=function() offAll() end},
+}
+menuBind.name={"Menü ein/aus","Toggle menu"}
+menuBind.fn=function() X.setOpen(not X.open) end
+local bindDefaults={}
+for i,b in ipairs(binds) do bindDefaults[i]=b.key end
+X.curSec="Tastaturbelegung"
+for _,b in ipairs(binds) do
+    X.reg(b.name,function() return b.key and b.key.Name or false end,function(v)
+        if v then
+            local ok,k=pcall(function() return Enum.KeyCode[v] end)
+            if ok and k then b.key=k end
+        elseif not b.req then
+            b.key=nil
+        end
+        refreshBinds()
+    end)
+end
+
+local function bindRow(parent,b)
+    local row=new("Frame",{BackgroundTransparency=1,Size=UDim2.new(1,0,0,44)},parent)
+    new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,10,0,7),Size=UDim2.new(1,-150,0,16),Text=b.name,TextColor3=C.txt,
+        Font=FONT,TextSize=13,TextXAlignment=Enum.TextXAlignment.Left},row)
+    new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,10,0,24),Size=UDim2.new(1,-150,0,14),
+        Text=b.req and {"Immer belegt (zum Ändern neue Taste drücken).","Always bound (press a new key to change)."} or {"Taste drücken zum Ein-/Ausschalten.","Press the key to toggle."},
+        TextColor3=C.sub,Font=FONT,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},row)
+    local btn=new("TextButton",{AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-8,0.5,0),Size=UDim2.new(0,124,0,26),BackgroundColor3=C.btn,
+        Text="",TextColor3=C.accent,Font=FONT,TextSize=12,AutoButtonColor=false},row)
+    round(btn,6)
+    local bs=stroke(btn,C.border,1)
+    local function upd()
+        btn.Text=(listening==b) and tr({"Taste drücken...","Press a key..."}) or keyName(b.key)
+    end
+    upd()
+    bindUpdaters[#bindUpdaters+1]=upd
+    accentHooks[#accentHooks+1]=function() btn.TextColor3=C.accent end
+    btn.MouseEnter:Connect(function() tw(bs,{Color=C.accent}) tw(btn,{BackgroundColor3=C.off}) end)
+    btn.MouseLeave:Connect(function() tw(bs,{Color=C.border}) tw(btn,{BackgroundColor3=C.btn}) end)
+    btn.MouseButton1Click:Connect(function()
+        listening=(listening==b) and nil or b
+        refreshBinds()
+    end)
+end
+
+-- ---------- Sprache ----------
+local langCard=section(pCfg,{"Sprache","Language"})
+X.LANGS={{"en","English"},{"pt","Português"},{"es","Español"},{"fr","Français"},{"de","Deutsch"},{"ja","日本語"},{"ru","Русский"}}
+local lgGrid=grid(langCard,2,30)
+X.lgBtns={}
+for i,l in ipairs(X.LANGS) do
+    local b=new("TextButton",{BackgroundColor3=C.btn,Text=l[2],TextColor3=C.txt,Font=FONT,TextSize=12,AutoButtonColor=false,LayoutOrder=i},lgGrid)
+    round(b,6)
+    local st=stroke(b,C.border,1)
+    b.MouseEnter:Connect(function() tw(b,{BackgroundColor3=C.off}) tw(st,{Color=C.accent}) end)
+    b.MouseLeave:Connect(function() tw(b,{BackgroundColor3=C.btn}) tw(st,{Color=(l[1]==lang) and C.accent or C.border}) end)
+    b.MouseButton1Click:Connect(function() X.setLang(l[1]) end)
+    X.lgBtns[l[1]]={st=st}
+end
+local function paintLang()
+    for code,t in pairs(X.lgBtns) do
+        t.st.Color=(code==lang) and C.accent or C.border
+        t.st.Thickness=(code==lang) and 2 or 1
+    end
+end
+accentHooks[#accentHooks+1]=paintLang
+function X.setLang(code)
+    lang=code
+    refreshLang()
+    refreshBinds()
+    paintLang()
+end
+paintLang()
+X.reg({"Sprachcode","Language code"},function() return lang end,function(v)
+    if type(v)=="string" and (v=="de" or v=="en" or X.L[v]~=nil) then X.setLang(v) end
+end)
+
+-- ---------- Design (neu: Farbschema + Akzentfarbe) ----------
+local desCard=section(pCfg,{"Design","Appearance"})
+
+-- 1) Farbschemas (Karten mit Mini-Vorschau)
+new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,10,0,0),Size=UDim2.new(1,-10,0,18),Text={"Farbschema","Color scheme"},TextColor3=C.txt,
+    Font=FONTB,TextSize=12,TextXAlignment=Enum.TextXAlignment.Left},desCard)
+local thGrid=grid(desCard,2,34)
+X.thBtns={}
+for i,th in ipairs(X.THEMES) do
+    local b=new("TextButton",{BackgroundColor3=C.btn,Text="",AutoButtonColor=false,LayoutOrder=i},thGrid)
+    round(b,6)
+    local st=stroke(b,C.border,1)
+    new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,10,0,0),Size=UDim2.new(1,-80,1,0),Text=th.name,TextColor3=C.txt,
+        Font=FONT,TextSize=12,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},b)
+    local prev={th.c.bg,th.c.card,th.c.accent}
+    for k,pc in ipairs(prev) do
+        local d=new("Frame",{AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-8-(3-k)*16,0.5,0),Size=UDim2.new(0,12,0,12),
+            BackgroundColor3=pc,BorderSizePixel=0},b)
+        X.rb[d]=nil                         -- Vorschau-Punkte bleiben immer gleich
+        round(d,6)
+        local ds=stroke(d,rgb(110,110,125),1)
+        X.rb[ds]=nil
+    end
+    b.MouseEnter:Connect(function() tw(b,{BackgroundColor3=C.off}) tw(st,{Color=C.accent}) end)
+    b.MouseLeave:Connect(function() tw(b,{BackgroundColor3=C.btn}) tw(st,{Color=(i==X.theme.idx) and C.accent or C.border}) end)
+    b.MouseButton1Click:Connect(function() X.setTheme(i) end)
+    X.thBtns[i]={b=b,st=st}
+end
+local function paintThemes()
+    for i,t in ipairs(X.thBtns) do
+        t.st.Color=(i==X.theme.idx) and C.accent or C.border
+        t.st.Thickness=(i==X.theme.idx) and 2 or 1
+    end
+end
+accentHooks[#accentHooks+1]=paintThemes
+paintThemes()
+
+-- 2) Akzentfarbe: Schnellauswahl + eigene Farbe
+local acHead=new("Frame",{BackgroundTransparency=1,Size=UDim2.new(1,0,0,44)},desCard)
+new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,10,0,7),Size=UDim2.new(1,-20,0,16),Text={"Akzentfarbe","Accent color"},TextColor3=C.txt,
+    Font=FONT,TextSize=13,TextXAlignment=Enum.TextXAlignment.Left},acHead)
+new("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,10,0,24),Size=UDim2.new(1,-20,0,14),
+    Text={"Schalter, Buttons und Hervorhebungen.","Switches, buttons and highlights."},TextColor3=C.sub,
+    Font=FONT,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},acHead)
+local chipRow=new("Frame",{BackgroundTransparency=1,Size=UDim2.new(1,0,0,30)},desCard)
+new("UIListLayout",{FillDirection=Enum.FillDirection.Horizontal,Padding=UDim.new(0,8),SortOrder=Enum.SortOrder.LayoutOrder,
+    VerticalAlignment=Enum.VerticalAlignment.Center},chipRow)
+pad(chipRow,0,0,0,10)
+X.chips={}
+for i,col in ipairs(X.ACCENTS) do
+    local c=new("TextButton",{Size=UDim2.new(0,24,0,24),BackgroundColor3=col,Text="",AutoButtonColor=false,LayoutOrder=i},chipRow)
+    X.rb[c]=nil
+    round(c,12)
+    local ring=new("UIStroke",{Color=Color3.new(1,1,1),Thickness=2,Transparency=1,ApplyStrokeMode=Enum.ApplyStrokeMode.Border},c)
+    c.MouseEnter:Connect(function() tw(c,{Size=UDim2.new(0,29,0,29)},0.12) end)
+    c.MouseLeave:Connect(function() tw(c,{Size=UDim2.new(0,24,0,24)},0.12) end)
+    c.MouseButton1Click:Connect(function() X.setAccent(col) end)
+    X.chips[i]={col=col,ring=ring}
+end
+accentHooks[#accentHooks+1]=function()
+    for _,c in ipairs(X.chips) do c.ring.Transparency=X.same(c.col,C.accent) and 0 or 1 end
+end
+accentHooks[#accentHooks]()
+
+X.setAccPick=colorRow(desCard,{"Eigene Farbe","Custom color"},{"Feld anklicken und beliebige Akzentfarbe wählen.","Click the swatch and pick any accent color."},
+    C.accent,function(c) X.setAccent(c,true) end,true)
+
+-- Speichern: Farbschema zuerst, danach Akzent (Reihenfolge ist wichtig)
+X.reg({"Farbschema","Color scheme"},function() return X.theme.idx end,function(v)
+    if type(v)=="number" and X.THEMES[v] then X.setTheme(v) end
+end)
+X.reg({"Akzent","Accent"},function()
+    local a=X.theme.accent
+    return a and {a.R,a.G,a.B} or false
+end,function(t)
+    if type(t)=="table" and #t==3 then X.setAccent(Color3.new(t[1],t[2],t[3])) end
+end)
+
+-- 3) Größe, Transparenz, Schrift
+local scaleVals={0.8,0.9,1,1.15}
+setSizeSeg=segmented(desCard,{"Menügröße","Menu size"},{"Skaliert das gesamte Fenster.","Scales the whole window."},{"80%","90%","100%","115%"},3,function(i)
+    X.base=scaleVals[i]
+    uiScale.Scale=X.base
+end,44)
+local transVals={0,0.15,0.3,0.45}
+setTransSeg=segmented(desCard,{"Transparenz","Transparency"},{"Macht das Menü durchsichtiger.","Makes the menu see-through."},{"0%","15%","30%","45%"},1,function(i)
+    setBgTrans(transVals[i])
+end,44)
+X.applyFont=function(i)
+    X.fcur[1],X.fcur[2]=X.FONTSETS[i][1],X.FONTSETS[i][2]
+    for o,info in pairs(X.txt) do
+        if o.Parent then pcall(function() o.Font=info.b and X.fcur[2] or X.fcur[1] end) end
+    end
+end
+X.setFontSeg=segmented(desCard,{"Schriftart","Font"},{"Schrift von Menü und ESP-Texten.","Font of menu and ESP texts."},
+    {"Gotham","Source","Arial","Ubuntu","Code"},1,X.applyFont,54)
+
+local function resetDesign()
+    X.setTheme(1)
+    X.base=1 uiScale.Scale=1 setSizeSeg(3)
+    setBgTrans(0) setTransSeg(1)
+    X.applyFont(1) X.setFontSeg(1)
+end
+buttonRow(desCard,{"Design zurücksetzen","Reset appearance"},{"Farbschema, Akzent, Größe, Transparenz, Schrift.","Scheme, accent, size, transparency, font."},{"Zurücksetzen","Reset"},true,function()
+    resetDesign()
+end)
+
+-- ---------- Privatsphäre (Name ausblenden mit Scramble-/Matrix-Effekt) ----------
+local privCard=section(pCfg,{"Privatsphäre","Privacy"})
+toggle(privCard,{"Namen ausblenden","Hide name"},{"Ersetzt deinen Namen im Menü durch einen Scramble-Effekt.","Replaces your name in the menu with a scramble effect."},nil,function(v)
+    X.U.hide=v
+end)
+segmented(privCard,{"Effekt","Effect"},{"Stil des versteckten Namens.","Style of the hidden name."},
+    {{"Scramble","Scramble"},{"Matrix","Matrix"},{"Animation","Animation"}},1,function(i)
+    X.U.mode=i
+    X.U.cur={}
+end,70)
+
+-- ---------- Info-Leiste (FPS / Ping / Uhrzeit oben links) ----------
+local infoCard=section(pCfg,{"Info-Leiste","Info bar"})
+toggle(infoCard,{"FPS / Ping / Uhrzeit","FPS / Ping / Time"},{"Zeigt eine Leiste oben links im Bild.","Shows a bar at the top left of the screen."},nil,function(v)
+    X.hud.on=v
+    X.hud.lb.Visible=v
+    X.hud.acc,X.hud.n=0,0
+end)
+
+-- ---------- Speichern ----------
+local saveCard=section(pCfg,{"Speichern","Saving"})
+X.setAutoSave=toggle(saveCard,{"Auto-Speichern","Auto-save"},{"Speichert alle Menü-Einstellungen automatisch.","Saves all menu settings automatically."},nil,function(v)
+    X.cfgOn=v
+end)
+X.setAutoSave(true)
+buttonRow(saveCard,{"Jetzt speichern","Save now"},{"Speichert den aktuellen Stand sofort.","Saves the current state right away."},{"Speichern","Save"},false,function(setDesc,resetDesc)
+    X.cfgSave(true)
+    setDesc({"Gespeichert!","Saved!"})
+    task.delay(3,resetDesc)
+end)
+buttonRow(saveCard,{"Gespeichertes löschen","Delete saved"},{"Beim nächsten Laden gelten wieder die Standardwerte.","Defaults apply again on next load."},{"Löschen","Delete"},true,function(setDesc,resetDesc)
+    X.cfgDelete()
+    setDesc({"Gelöscht!","Deleted!"})
+    task.delay(3,resetDesc)
+end)
+
+-- ---------- Tastaturbelegung ----------
+local keyCard=section(pCfg,{"Tastaturbelegung","Keybinds"})
+for _,b in ipairs(binds) do bindRow(keyCard,b) end
+buttonRow(keyCard,{"Belegung zurücksetzen","Reset keybinds"},{"Menü-Taste = RCtrl, alle anderen frei. (Entf/Backspace = Taste löschen, Esc = abbrechen)","Menu key = RCtrl, all others unbound. (Del/Backspace = clear, Esc = cancel)"},{"Zurücksetzen","Reset"},true,function()
+    listening=nil
+    for i,b in ipairs(binds) do b.key=bindDefaults[i] end
+    refreshBinds()
+end)
+
+-- ---------- System ----------
+local menuSysCard=section(pCfg,{"System","System"})
+buttonRow(menuSysCard,{"Alle Funktionen aus","Disable all features"},{"Schaltet ESP, Farm und Hilfen komplett aus.","Turns off ESP, farming and helpers."},{"Ausschalten","Turn off"},true,function()
+    offAll()
+end)
+buttonRow(menuSysCard,{"Menü zurücksetzen","Reset menu"},{"Setzt Sprache, Design und Tasten zurück.","Resets language, appearance and keys."},{"Zurücksetzen","Reset"},true,function()
+    X.setLang("de")
+    resetDesign()
+    listening=nil
+    for i,b in ipairs(binds) do b.key=bindDefaults[i] end
+    f.Position=UDim2.new(0.5,0,0.5,0)
+    refreshBinds()
+end)
+buttonRow(menuSysCard,{"Terminate","Terminate"},{"Schaltet alles aus und entlädt das komplette Menü.","Turns everything off and fully unloads the menu."},{"Terminate","Terminate"},true,function()
+    unload()
+end)
+end
+
+selectTab("esp")
+
+--// SPEICHERN / LADEN (ganzes Menü)
+X.cfgOn=true
+do
+local HS2=game:GetService("HttpService")
+local CFG_FILE="AntonioHub_Settings.json"
+
+X.curSec="Fenster"
+X.reg("PositionC",function()
+    local p=f.Position
+    return {p.X.Scale,p.X.Offset,p.Y.Scale,p.Y.Offset}
+end,function(t)
+    if type(t)=="table" and #t==4 then f.Position=UDim2.new(t[1],t[2],t[3],t[4]) end
+end)
+
+function X.cfgCollect()
+    local d={}
+    for _,it in ipairs(X.cfgItems) do
+        local ok,v=pcall(it.get)
+        if ok and v~=nil then d[it.key]=v end
+    end
+    return d
+end
+function X.cfgEncode()
+    local ok,js=pcall(function() return HS2:JSONEncode(X.cfgCollect()) end)
+    return ok and js or nil
+end
+function X.cfgSave(force)
+    if not (X.cfgOn or force) then return end
+    local js=X.cfgEncode()
+    if not js or (js==X.cfgLast and not force) then return end
+    X.cfgLast=js
+    genv.AntonioHubCfg=js
+    pcall(function() if writefile then writefile(CFG_FILE,js) end end)
+end
+function X.cfgDelete()
+    pcall(function() if delfile and isfile and isfile(CFG_FILE) then delfile(CFG_FILE) end end)
+    genv.AntonioHubCfg=nil
+    X.cfgLast=X.cfgEncode()
+end
+function X.cfgLoad()
+    local js
+    pcall(function() if isfile and readfile and isfile(CFG_FILE) then js=readfile(CFG_FILE) end end)
+    js=js or genv.AntonioHubCfg
+    if type(js)~="string" then return false end
+    local ok,d=pcall(function() return HS2:JSONDecode(js) end)
+    if not ok or type(d)~="table" then return false end
+    for _,it in ipairs(X.cfgItems) do
+        local v=d[it.key]
+        if v~=nil then pcall(it.apply,v) end
+    end
+    return true
+end
+
+X.cfgLoad()
+X.built=true          -- ab jetzt werden keine Theme-Rollen mehr vergeben (Aufbau abgeschlossen)
+X.cfgLast=X.cfgEncode()
+
+-- Auto-Speichern (alle 3 Sekunden, schreibt nur bei Änderungen)
+task.spawn(function()
+    while g.Parent do
+        task.wait(3)
+        pcall(X.cfgSave)
+    end
+end)
+end
+
+--// ENTLADEN (Terminate / ×)
+local unloaded=false
+unload=function()
+    if unloaded then return end
+    unloaded=true
+    pcall(X.cfgSave)
+    diamondOn=false quickOn=false playerEspOn=false antiAfkOn=false diamondEspOn=false
+    X.F.on=false
+    X.perf.offAll()
+    for _,e in pairs(diamonds) do updateDiamondHighlight(e,false) end
+    for _,m in pairs(marks) do if m.ln then pcall(function() m.ln:Remove() end) end end
+    for plr in pairs(playerMarks) do killPM(plr) end
+    restoreAllHidden()
+    for _,c in ipairs(conns) do pcall(function() c:Disconnect() end) end
+    g:Destroy()
+    diamondWake:Fire()
+    X.F.wake:Fire()
+    if genv.AntonioHubUnload==unload then genv.AntonioHubUnload=nil end
+end
+genv.AntonioHubUnload=unload
+
+--// FENSTER-STEUERUNG
+local mini=false
+bMin.MouseButton1Click:Connect(function()
+    mini=not mini
+    nav.Visible=not mini
+    side.Visible=not mini
+    panel.Visible=not mini
+    local dy=(WIN_H-TOP_H)/2
+    local p0=f.Position
+    tw(f,{Size=mini and UDim2.new(0,WIN_W,0,TOP_H) or UDim2.new(0,WIN_W,0,WIN_H),
+        Position=UDim2.new(p0.X.Scale,p0.X.Offset,p0.Y.Scale,p0.Y.Offset+(mini and -dy or dy))},0.25)
+end)
+bClose.MouseButton1Click:Connect(function() X.setOpen(false,unload) end)
+
+--// Tasten (Belegung lernen + Hotkeys auslösen)
+bind(UIS.InputBegan,function(i,gp)
+    if i.UserInputType~=Enum.UserInputType.Keyboard then return end
+    if listening then
+        local b=listening
+        listening=nil
+        if i.KeyCode==Enum.KeyCode.Escape then
+            -- abbrechen
+        elseif (i.KeyCode==Enum.KeyCode.Backspace or i.KeyCode==Enum.KeyCode.Delete) and not b.req then
+            b.key=nil
+        elseif i.KeyCode~=Enum.KeyCode.Unknown then
+            for _,o in ipairs(binds) do
+                if o~=b and o.key==i.KeyCode then o.key=nil end
+            end
+            b.key=i.KeyCode
+        end
+        refreshBinds()
+        return
+    end
+    if gp then return end
+    for _,b in ipairs(binds) do
+        if b.key and b.key==i.KeyCode then pcall(b.fn) end
+    end
+end)
+
+--// LOOPS
+task.spawn(function()
+    while g.Parent do
+        pcall(scan)
+        task.wait(2)
+    end
+end)
+
+-- Beschriftung, Sichtbarkeit & Spieler-ESP (4x pro Sekunde)
+task.spawn(function()
+    while g.Parent do
+        local r=P.Character and P.Character:FindFirstChild("HumanoidRootPart")
+        local p=r and r.Position
+        for _,m in pairs(marks) do
+            if m.part and m.part.Parent then
+                local dist=p and (m.part.Position-p).Magnitude or 0
+                local vis=dist<=S.maxDist
+                m.vis=vis
+                local lines={}
+                local first=""
+                if S.showName then first=m.t end
+                if S.showSize and m.sz and m.sz>0 then first=first..string.format(" (%.1f)",m.sz) end
+                first=first:gsub("^%s+","")
+                if first~="" then lines[#lines+1]=first end
+                if S.showDist then lines[#lines+1]=math.floor(dist).." m" end
+                m.lb.Text=table.concat(lines,"\n")
+                m.lb.TextSize=S.textSize
+                m.bb.Enabled=vis
+                m.bb.AlwaysOnTop=S.xray
+                m.hl.Enabled=vis and S.showHl
+                m.hl.DepthMode=S.xray and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
+            end
+        end
+        if playerEspOn or next(playerMarks) then
+            pcall(updatePlayerEsp)
+        end
+        task.wait(0.15)
+    end
+end)
+
+-- Zeichnen der Spieler-ESP-Elemente (pro Frame)
+local function drawPlayer(pm,cam,vs)
+    local col=PS.col
+    local hrp,char=pm.hrp,pm.char
+    local alive=hrp and hrp.Parent and char and char.Parent
+
+    -- Tracer (unten / Mitte)
+    if pm.ln then
+        local show=false
+        if PS.tracer and alive then
+            local v=cam:WorldToViewportPoint(hrp.Position)
+            if v.Z>0 then
+                pm.ln.Color=col
+                pm.ln.From=Vector2.new(vs.X/2, PS.tracerFrom==1 and vs.Y or vs.Y/2)
+                pm.ln.To=Vector2.new(v.X,v.Y)
+                show=true
+            end
+        end
+        pm.ln.Visible=show
+    end
+
+    -- Box (2D / 3D / Ecken)
+    if pm.box then pm.box.Visible=false end
+    X.hideAll(pm.box3) X.hideAll(pm.corner)
+    if PS.box and alive and Drawing then
+        local cf,size=char:GetBoundingBox()
+        local pts,front={}, true
+        local minX,minY,maxX,maxY=math.huge,math.huge,-math.huge,-math.huge
+        for ix=0,1 do for iy=0,1 do for iz=0,1 do
+            local v=cam:WorldToViewportPoint(cf:PointToWorldSpace(Vector3.new((ix*2-1)*size.X/2,(iy*2-1)*size.Y/2,(iz*2-1)*size.Z/2)))
+            pts[ix*4+iy*2+iz]=v
+            if v.Z<=0 then front=false end
+            if v.X<minX then minX=v.X end
+            if v.X>maxX then maxX=v.X end
+            if v.Y<minY then minY=v.Y end
+            if v.Y>maxY then maxY=v.Y end
+        end end end
+        local bt=PS.boxType
+        if bt==2 then
+            -- 3D-Quader: 12 Kanten
+            pm.box3=pm.box3 or X.mkLines(12,1.5)
+            local n=0
+            for i=0,7 do
+                for _,bit in ipairs({1,2,4}) do
+                    if i%(bit*2)<bit then
+                        n=n+1
+                        local a,b=pts[i],pts[i+bit]
+                        local l=pm.box3[n]
+                        if a.Z>0 and b.Z>0 then
+                            l.From=Vector2.new(a.X,a.Y) l.To=Vector2.new(b.X,b.Y) l.Color=col l.Visible=true
+                        end
+                    end
+                end
+            end
+        elseif front then
+            local w,h=maxX-minX,maxY-minY
+            if bt==3 then
+                -- Eck-Box
+                pm.corner=pm.corner or X.mkLines(8,1.5)
+                local L=math.min(w,h)*0.3
+                local segs={
+                    {minX,minY,minX+L,minY},{minX,minY,minX,minY+L},
+                    {maxX,minY,maxX-L,minY},{maxX,minY,maxX,minY+L},
+                    {minX,maxY,minX+L,maxY},{minX,maxY,minX,maxY-L},
+                    {maxX,maxY,maxX-L,maxY},{maxX,maxY,maxX,maxY-L},
+                }
+                for i,s in ipairs(segs) do
+                    local l=pm.corner[i]
+                    l.From=Vector2.new(s[1],s[2]) l.To=Vector2.new(s[3],s[4]) l.Color=col l.Visible=true
+                end
+            elseif pm.box then
+                -- 2D-Rahmen
+                pm.box.Position=Vector2.new(minX,minY)
+                pm.box.Size=Vector2.new(w,h)
+                pm.box.Color=col
+                pm.box.Visible=true
+            end
+        end
+    end
+
+    -- Skeleton inkl. Kopfkreis (Kopf + Hals)
+    if PS.skel and alive and Drawing then
+        if not pm.bones then
+            pm.bones={}
+            for i=1,14 do
+                local l=Drawing.new("Line")
+                l.Thickness=1.5 l.Visible=false
+                pm.bones[i]=l
+            end
+        end
+        if not pm.headC then
+            local c=Drawing.new("Circle")
+            c.Thickness=1.5 c.NumSides=24 c.Filled=false c.Visible=false
+            pm.headC=c
+        end
+        if pm.skChar~=char or tick()-(pm.skT or 0)>3 then
+            pm.skChar=char pm.skT=tick()
+            local def=char:FindFirstChild("UpperTorso") and X.BONES15 or X.BONES6
+            pm.skPairs={}
+            for _,b in ipairs(def) do
+                local a,c=char:FindFirstChild(b[1]),char:FindFirstChild(b[2])
+                if a and c then pm.skPairs[#pm.skPairs+1]={a,c} end
+            end
+        end
+        for i=1,14 do
+            local l=pm.bones[i]
+            local pr=pm.skPairs[i]
+            local show=false
+            if pr and pr[1].Parent and pr[2].Parent then
+                local pa=cam:WorldToViewportPoint(pr[1].Position)
+                local pc=cam:WorldToViewportPoint(pr[2].Position)
+                if pa.Z>0 and pc.Z>0 then
+                    l.From=Vector2.new(pa.X,pa.Y)
+                    l.To=Vector2.new(pc.X,pc.Y)
+                    l.Color=col
+                    show=true
+                end
+            end
+            l.Visible=show
+        end
+        -- Kopfkreis
+        local head=char:FindFirstChild("Head")
+        local showH=false
+        if head and head:IsA("BasePart") then
+            local c0=cam:WorldToViewportPoint(head.Position)
+            local c1=cam:WorldToViewportPoint(head.Position+Vector3.new(0,head.Size.Y/2,0))
+            if c0.Z>0 then
+                pm.headC.Position=Vector2.new(c0.X,c0.Y)
+                pm.headC.Radius=math.max(2,math.abs(c1.Y-c0.Y))
+                pm.headC.Color=col
+                showH=true
+            end
+        end
+        pm.headC.Visible=showH
+    else
+        if pm.bones then for _,l in ipairs(pm.bones) do l.Visible=false end end
+        if pm.headC then pm.headC.Visible=false end
+    end
+end
+
+-- Farben, Tracer, Box & Skeleton (jeden Frame)
+task.spawn(function()
+    while g.Parent do
+        local cam=workspace.CurrentCamera
+        local vs=cam.ViewportSize
+        local rbc=Color3.fromHSV((tick()*0.6)%1,1,1)
+        for _,m in pairs(marks) do
+            local col=S.useCol and S.col or (m.rb and rbc or m.col)
+            m.hl.OutlineColor=col
+            m.lb.TextColor3=col
+            if m.ln then
+                local show=false
+                if S.tracers and m.vis and m.part and m.part.Parent then
+                    local v,on=cam:WorldToViewportPoint(m.part.Position)
+                    if on then
+                        show=true
+                        m.ln.Color=col
+                        m.ln.Thickness=S.tracerThick
+                        m.ln.From=Vector2.new(vs.X/2,S.tracerFrom=="bottom" and vs.Y or vs.Y/2)
+                        m.ln.To=Vector2.new(v.X,v.Y)
+                    end
+                end
+                m.ln.Visible=show
+            end
+        end
+        for _,pm in pairs(playerMarks) do
+            pcall(drawPlayer,pm,cam,vs)
+        end
+        RS.RenderStepped:Wait()
+    end
+    for _,m in pairs(marks) do if m.ln then pcall(function() m.ln:Remove() end) end end
+    for plr in pairs(playerMarks) do killPM(plr) end
+end)
+
+X.setOpen(true)
+print("Antonio Hub v1.0 (Save The Egg) geladen!")
+end
